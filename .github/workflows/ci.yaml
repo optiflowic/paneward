@@ -7,12 +7,10 @@ on:
       - '**.md'
       - 'docs/**'
       - 'LICENSE'
+  # No paths-ignore on pull requests: these jobs are required checks, and a
+  # skipped required check would block docs-only pull requests from merging.
   pull_request:
     branches: [main]
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - 'LICENSE'
 
 env:
   CARGO_TERM_COLOR: always
