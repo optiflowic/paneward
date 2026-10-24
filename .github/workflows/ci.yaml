@@ -1,0 +1,127 @@
+name: 🚀 CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+  # No paths-ignore on pull requests: these jobs are required checks, and a
+  # skipped required check would block docs-only pull requests from merging.
+  pull_request:
+    branches: [main]
+
+# Deny everything by default; each job asks only for what it needs.
+permissions: {}
+
+# A new push to the same PR or branch cancels the run it supersedes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # check out the repository
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Installs the toolchain pinned in rust-toolchain.toml
+      - name: 🦀 Install Rust toolchain
+        run: rustup toolchain install
+
+      - name: 🗂️ Cache Cargo
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+
+      - name: 🖊️ Check formatting
+        run: make fmt-check
+
+      - name: 🔍 Run clippy
+        run: make lint
+
+  security:
+    name: Security
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # check out the repository
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: 🦀 Install Rust toolchain
+        run: rustup toolchain install
+
+      - name: 🧰 Install cargo-deny
+        uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2.87.31
+        with:
+          # Pinned for reproducible, tamper-resistant runs; Dependabot does not bump
+          # this, so update it by hand (the advisory database is fetched fresh anyway).
+          tool: cargo-deny@0.20.2
+
+      # Advisories (RustSec), licenses, banned crates and sources; see deny.toml
+      - name: 🛡️ Run cargo-deny
+        run: make deny
+
+  workflow-audit:
+    name: Workflow Audit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # check out the repository
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Static security analysis of GitHub Actions workflows (permissions,
+      # injection, credential persistence, unpinned actions, ...)
+      - name: 🔐 Run zizmor
+        uses: zizmorcore/zizmor-action@53290badfa369cb0bf7ad16342cb62c2fa47ac7b # v0.8.0
+        with:
+          version: "1.31.1"
+          persona: pedantic
+          # Fail the job on findings instead of uploading SARIF, which would need
+          # the security-events: write permission.
+          advanced-security: "false"
+
+  build-test:
+    name: Build & Test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read # check out the repository
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: 🦀 Install Rust toolchain
+        run: rustup toolchain install
+
+      - name: 🗂️ Cache Cargo
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+
+      - name: 🧪 Test
+        run: make test
+
+      - name: 🏗️ Build
+        run: make build

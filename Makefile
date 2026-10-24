@@ -1,6 +1,6 @@
 .PHONY: all build run fmt fmt-check lint test deny clean
 
-# Same checks as CI
+# Local quality gate. CI runs these plus `make build` and a zizmor workflow audit.
 all: fmt-check lint test deny
 
 build:
