@@ -12,6 +12,14 @@ on:
   pull_request:
     branches: [main]
 
+# Deny everything by default; each job asks only for what it needs.
+permissions: {}
+
+# A new push to the same PR or branch cancels the run it supersedes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -20,7 +28,7 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: read # check out the repository
 
     steps:
       - name: 📥 Checkout repository
@@ -45,7 +53,7 @@ jobs:
     name: Security
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: read # check out the repository
 
     steps:
       - name: 📥 Checkout repository
@@ -73,7 +81,7 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     permissions:
-      contents: read
+      contents: read # check out the repository
 
     steps:
       - name: 📥 Checkout repository

@@ -1,15 +1,28 @@
-name: release-please
+name: 📦 release-please
 
 on:
   push:
     branches: [main]
 
+# Deny everything by default; the job below asks only for what it needs.
+permissions: {}
+
+# Release PR updates must not race each other; let the latest push win.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   release-please:
+    name: Release PR
     runs-on: ubuntu-latest
+    # Uses the short-lived GITHUB_TOKEN on purpose: no long-lived secret to leak.
+    # Release PRs opened with it do not trigger CI; they only bump versions and the
+    # changelog, and are merged through the Ruleset bypass (pull requests only).
     permissions:
-      contents: write
-      issues: write
-      pull-requests: write
+      contents: write # create release tags and GitHub releases
+      issues: write # create and update the release labels (autorelease: pending/tagged)
+      pull-requests: write # open and update the release PR
     steps:
-      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+      - name: 🚀 Run release-please
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
