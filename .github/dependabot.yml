@@ -4,6 +4,10 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # Wait before adopting a fresh release, so a compromised or yanked version is
+    # usually caught upstream before it reaches us.
+    cooldown:
+      default-days: 7
     labels:
       - dependencies
 
@@ -11,5 +15,7 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     labels:
       - dependencies
