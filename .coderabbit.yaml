@@ -1,0 +1,49 @@
+language: en
+
+reviews:
+  profile: assertive
+  # Request changes for blocking findings; approve only low-risk pull requests.
+  # (Replaces the deprecated `request_changes_workflow` alias.)
+  auto_approvals:
+    enabled: true
+    max_merge_risk: low
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
+
+  path_instructions:
+    - path: "**/*.rs"
+      instructions: |
+        ## Project Constraints (see AGENTS.md)
+        - Core code must stay agent-agnostic: flag any Claude Code / Codex specific logic outside state parsing of the `agent` field.
+        - Only modules under `src/terminal/` may run terminal CLIs (`wezterm cli`, `tmux`, ...). Flag `std::process::Command` elsewhere.
+        - paneward is read-only toward agents: flag any code that writes state files or sends input to an agent pane.
+        - A missing state directory or terminal backend must be an empty state, never an error or panic.
+        - Behavior must match `docs/spec/state-format.md`. Flag deviations and spec changes that are not reflected in the memo.
+
+        ## Readable Code (The Art of Readable Code)
+        - Names should be precise and informative. Flag vague names like `data`, `info`, `temp`, `handle`, `process`.
+        - Functions should do one thing. Flag functions longer than ~40 lines or with more than one level of abstraction.
+        - Avoid deep nesting (more than 3 levels). Suggest early returns, `let ... else`, or extracted helpers instead.
+        - Magic numbers and strings must be named constants.
+
+        ## Rust Best Practices
+        - No `unwrap()` / `expect()` / indexing that can panic outside tests, except for invariants documented with a comment.
+        - Errors carry context (`anyhow::Context`). Flag silently discarded `Result`s that are not an intentional "skip what we do not understand" path.
+        - Prefer borrowing over cloning; flag unnecessary `clone()` / `to_string()` in hot paths (render loop).
+        - Keep items private by default; expose only what other modules need.
+        - No speculative code: unused abstractions, extension points, or options added "for later".
+
+    - path: "**/tests/**/*.rs"
+      instructions: |
+        - Test names should describe the scenario, not just the function name.
+        - Prefer one behavior per test; use small helpers instead of copy-pasted setup.
+        - Tests touching the filesystem must use a temporary directory, never the real state directory.
+
+  finishing_touches:
+    docstrings:
+      enabled: false
+
+chat:
+  auto_reply: true
