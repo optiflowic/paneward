@@ -76,7 +76,8 @@ the memo, fix the memo in the same PR.
   terminal-dependent, add a step to `docs/manual-testing.md` instead.
 - No coverage metric. Quality gates: unit tests for the cases above, `make` clean,
   and the manual checklist before release.
-- Run: `make` (same checks as CI). Tests must pass on Linux and macOS.
+- Run: `make` (`fmt-check`, `lint`, `test`, `deny`). CI also runs `make build` and
+  audits the workflows with zizmor. Tests must pass on Linux and macOS.
 
 ## Definition of Done (per feature)
 
@@ -91,8 +92,8 @@ the memo, fix the memo in the same PR.
   and open a pull request.
 - Commits: Conventional Commits (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`,
   `chore:`, `ci:`). Small, single-purpose commits.
-- CI (GitHub Actions): lint (`fmt-check`, `clippy`), security (`cargo deny`), and
-  test + build on Linux and macOS. All green before merge.
+- CI (GitHub Actions): lint (`fmt-check`, `clippy`), security (`cargo deny`),
+  workflow audit (zizmor), and test + build on Linux and macOS. All green before merge.
 - Versioning follows semver. Before 1.0, a breaking change bumps MINOR. Mark it with
   `!` or a `BREAKING CHANGE:` footer.
 - Releases: [release-please](https://github.com/googleapis/release-please)

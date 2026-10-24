@@ -73,6 +73,29 @@ jobs:
       - name: 🛡️ Run cargo-deny
         run: make deny
 
+  workflow-audit:
+    name: Workflow Audit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # check out the repository
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Static security analysis of GitHub Actions workflows (permissions,
+      # injection, credential persistence, unpinned actions, ...)
+      - name: 🔐 Run zizmor
+        uses: zizmorcore/zizmor-action@53290badfa369cb0bf7ad16342cb62c2fa47ac7b # v0.8.0
+        with:
+          version: "1.31.1"
+          persona: pedantic
+          # Fail the job on findings instead of uploading SARIF, which would need
+          # the security-events: write permission.
+          advanced-security: "false"
+
   build-test:
     name: Build & Test (${{ matrix.os }})
     strategy:
