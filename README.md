@@ -38,7 +38,7 @@ The toolchain is pinned in `rust-toolchain.toml`; [rustup](https://rustup.rs)
 picks it up automatically.
 
 ```sh
-make        # fmt-check + lint + test + deny (same as CI)
+make        # fmt-check + lint + test + deny (CI also runs make build)
 make fmt    # format
 make run    # run from source
 ```

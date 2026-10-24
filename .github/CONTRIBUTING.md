@@ -21,7 +21,7 @@ When reporting a bug:
 
 - Use the `Bug Report` issue template.
 - Specify your terminal (and version), the agent (Claude Code, Codex, ...), your OS, and `paneward --version`.
-- Include steps to reproduce, expected vs. actual behavior, and the related state file under `~/.local/state/paneward/` if relevant.
+- Include steps to reproduce, expected vs. actual behavior, and the related state file under `${XDG_STATE_HOME:-$HOME/.local/state}/paneward/` if relevant.
 
 ## ✨ Suggesting Features
 
@@ -34,7 +34,7 @@ When suggesting a feature:
 
 - Fork the repository and create a feature branch from `main`.
 - Follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`).
-- Run `make` before submitting — it runs `cargo fmt --check`, `clippy`, the test suite and `cargo deny` (same as CI).
+- Run `make` before submitting — it runs `cargo fmt --check`, `clippy`, the test suite and `cargo deny` (CI also runs `make build` and a zizmor audit of the workflows).
 - Run `docs/manual-testing.md` if you touch terminal interaction or drawing.
 - Update `docs/spec/state-format.md` first if you change the state file format.
 - Link to the related issue using `Closes #123`.
@@ -47,7 +47,7 @@ The Rust toolchain is pinned in `rust-toolchain.toml`; [rustup](https://rustup.r
 
 | Command | Description |
 |---|---|
-| `make` | `fmt-check` + `lint` + `test` + `deny` (same as CI) |
+| `make` | `fmt-check` + `lint` + `test` + `deny` (CI also runs `make build`) |
 | `make test` | Run the test suite |
 | `make fmt` | Format with rustfmt |
 | `make fmt-check` | Check formatting without writing |
