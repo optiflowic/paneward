@@ -67,7 +67,9 @@ jobs:
       - name: 🧰 Install cargo-deny
         uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2.87.31
         with:
-          tool: cargo-deny
+          # Pinned for reproducible, tamper-resistant runs; Dependabot does not bump
+          # this, so update it by hand (the advisory database is fetched fresh anyway).
+          tool: cargo-deny@0.20.2
 
       # Advisories (RustSec), licenses, banned crates and sources; see deny.toml
       - name: 🛡️ Run cargo-deny

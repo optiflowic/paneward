@@ -103,6 +103,10 @@ the memo, fix the memo in the same PR.
   before merging the release PR.
 - The toolchain is pinned in `rust-toolchain.toml`; `rust-version` in `Cargo.toml`
   is the MSRV. `Cargo.lock` is committed.
+- Dependabot updates crates and GitHub Actions (with a 7-day cooldown). It does
+  NOT update these pins; bump them by hand: the Rust version in
+  `rust-toolchain.toml`, and the tool versions passed to actions in
+  `.github/workflows/ci.yaml` (`cargo-deny`, `zizmor`).
 - When a spec is ambiguous or two valid designs conflict with these rules:
   STOP and ask. Do not pick silently. Present options with trade-offs.
 
