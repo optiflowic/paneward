@@ -76,14 +76,14 @@ the memo, fix the memo in the same PR.
   terminal-dependent, add a step to `docs/manual-testing.md` instead.
 - No coverage metric. Quality gates: unit tests for the cases above, `make` clean,
   and the manual checklist before release.
-- Run: `make` (`fmt-check`, `lint`, `test`, `deny`). CI also runs `make build` and
-  audits the workflows with zizmor. Tests must pass on Linux and macOS.
+- Run: `make` (`fmt-check`, `lint`, `test`, `deny`, `audit`). CI also runs
+  `make build`. Tests must pass on Linux and macOS.
 
 ## Definition of Done (per feature)
 
 1. Spec memo updated if the state format or a terminal backend is involved
 2. Unit tests for pure logic; manual checklist updated if terminal behavior changed
-3. `make` clean (`fmt-check`, `lint`, `test`, `deny`)
+3. `make` clean (`fmt-check`, `lint`, `test`, `deny`, `audit`)
 4. README updated if user-facing (commands, keys, layouts, supported agents/terminals)
 
 ## Workflow
@@ -103,10 +103,13 @@ the memo, fix the memo in the same PR.
   before merging the release PR.
 - The toolchain is pinned in `rust-toolchain.toml`; `rust-version` in `Cargo.toml`
   is the MSRV. `Cargo.lock` is committed.
+- Development tools (`cargo-deny`, `zizmor`) are pinned in `mise.toml`, the single
+  source of their versions: CI installs them from it with `jdx/mise-action`. Never
+  pin a tool version in a workflow.
 - Dependabot updates crates and GitHub Actions (with a 7-day cooldown). It does
   NOT update these pins; bump them by hand: the Rust version in
-  `rust-toolchain.toml`, and the tool versions passed to actions in
-  `.github/workflows/ci.yaml` (`cargo-deny`, `zizmor`).
+  `rust-toolchain.toml`, the tools in `mise.toml`, and the mise version passed to
+  `jdx/mise-action` in `.github/workflows/ci.yaml`.
 - When a spec is ambiguous or two valid designs conflict with these rules:
   STOP and ask. Do not pick silently. Present options with trade-offs.
 

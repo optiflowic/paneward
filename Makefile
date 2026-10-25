@@ -1,7 +1,8 @@
-.PHONY: all build run fmt fmt-check lint test deny clean
+.PHONY: all build run fmt fmt-check lint test deny audit clean
 
-# Local quality gate. CI runs these plus `make build` and a zizmor workflow audit.
-all: fmt-check lint test deny
+# Local quality gate, the same checks as CI except `make build`.
+# `deny` and `audit` need the tools pinned in mise.toml (`mise install`).
+all: fmt-check lint test deny audit
 
 build:
 	cargo build --release --locked
@@ -23,6 +24,12 @@ test:
 
 deny:
 	cargo deny check
+
+# Online audits (e.g. pinned commits vs. tags) run when a GitHub token is set in
+# GH_TOKEN, GITHUB_TOKEN or ZIZMOR_GITHUB_TOKEN:
+#   GH_TOKEN=$(gh auth token) make audit
+audit:
+	zizmor --persona=pedantic .
 
 clean:
 	cargo clean
