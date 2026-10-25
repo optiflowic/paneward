@@ -72,8 +72,9 @@ paneward [--layout auto|sidebar|dock]
 ### What the list shows
 
 Each session shows its number (1-9, for the number keys), status, project (the last
-part of its working directory, or `pane <id>` without one), agent, and how long it has had its current status (for sessions already
-running when paneward starts, counted from their state file's last update).
+part of its working directory, or `pane <id>` without one), agent, and how long it
+has had its current status. For sessions that existed before paneward started, that
+time counts from their state file's last update.
 
 | Icon | Status    | Meaning |
 |------|-----------|---------|
@@ -88,8 +89,8 @@ yet). Sessions whose pane is gone (closed pane, terminal restart) are hidden wit
 a few seconds, the next time paneward lists the panes. If listing the panes fails,
 paneward shows the error and keeps using the last pane list it got: state file
 changes still show up, but panes opened or closed since then are not noticed.
-Outside WezTerm the list stays empty, because paneward cannot check which panes
-exist.
+Without `WEZTERM_PANE` (outside WezTerm, or in WSL without the `WSLENV` forwarding)
+the list stays empty, because paneward cannot check which panes exist.
 
 ## Roadmap
 
