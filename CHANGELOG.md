@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/optiflowic/paneward/compare/paneward-v0.1.0...paneward-v0.1.1) (2026-10-25)
+
+
+### Continuous Integration
+
+* attach prebuilt binaries to releases ([#25](https://github.com/optiflowic/paneward/issues/25)) ([90bb153](https://github.com/optiflowic/paneward/commit/90bb153b917e93600def55d4d1ee965991cd4f45)), closes [#24](https://github.com/optiflowic/paneward/issues/24)
+
 ## 0.1.0 (2026-10-25)
 
 
