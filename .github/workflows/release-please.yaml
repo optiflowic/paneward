@@ -14,7 +14,7 @@ jobs:
   release-please:
     name: Release PR
     runs-on: ubuntu-latest
-    # Never cancelled, so the run that creates a release is the one for its commit.
+    # A run that is creating a release must not be cancelled.
     concurrency:
       group: ${{ github.workflow }}-${{ github.ref }}
       cancel-in-progress: false
@@ -28,15 +28,18 @@ jobs:
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
-      version: ${{ steps.version.outputs.version }}
+      version: ${{ steps.tag.outputs.version }}
+      commit: ${{ steps.tag.outputs.commit }}
+      attest: ${{ steps.tag.outputs.attest }}
     steps:
       - name: 🚀 Run release-please
         id: release
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
 
-      # Builds and provenance use this run's commit; stop if the tag is elsewhere.
-      - name: 🔗 Check that the tag is this commit
-        id: version
+      # Provenance names this run's commit, so attest only when the tag is that commit.
+      # Otherwise (a newer push's run created the release) attach binaries without it.
+      - name: 🔗 Resolve the tag's commit
+        id: tag
         if: steps.release.outputs.release_created == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -47,11 +50,16 @@ jobs:
           if [[ "$(jq -r .object.type <<<"$ref")" == tag ]]; then
             commit=$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$commit" --jq .object.sha)
           fi
+          attest=true
           if [[ "$commit" != "$GITHUB_SHA" ]]; then
-            echo "::error::The release tag does not point at this run's commit; no binaries attached."
-            exit 1
+            attest=false
+            echo "::warning::The release tag is not this run's commit: binaries get no provenance."
           fi
-          echo "version=${TAG#paneward-}" >> "$GITHUB_OUTPUT"
+          {
+            echo "version=${TAG#paneward-}"
+            echo "commit=$commit"
+            echo "attest=$attest"
+          } >> "$GITHUB_OUTPUT"
 
   build:
     name: Build (${{ matrix.target }})
@@ -85,6 +93,7 @@ jobs:
       - name: 📥 Checkout the release commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ needs.release-please.outputs.commit }}
           persist-credentials: false
 
       # No cache: other runs could write to it (cache poisoning).
@@ -120,6 +129,7 @@ jobs:
   attest:
     name: Attest provenance
     needs: [release-please, build]
+    if: needs.release-please.outputs.attest == 'true'
     concurrency:
       group: ${{ github.workflow }}-attest-${{ needs.release-please.outputs.tag_name }}
       cancel-in-progress: false
@@ -142,7 +152,10 @@ jobs:
 
   publish:
     name: Attach binaries
-    needs: [release-please, attest]
+    needs: [release-please, build, attest]
+    if: >-
+      ${{ !cancelled() && needs.build.result == 'success'
+      && contains(fromJSON('["success", "skipped"]'), needs.attest.result) }}
     concurrency:
       group: ${{ github.workflow }}-publish-${{ needs.release-please.outputs.tag_name }}
       cancel-in-progress: false
