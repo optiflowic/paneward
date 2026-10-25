@@ -34,16 +34,19 @@ through a backend.
 
 ## Development
 
-The toolchain is pinned in `rust-toolchain.toml`; [rustup](https://rustup.rs)
-picks it up automatically.
+The Rust toolchain is pinned in `rust-toolchain.toml`; [rustup](https://rustup.rs)
+picks it up automatically. The other development tools (cargo-deny, zizmor) are
+pinned in `mise.toml`; install them with [mise](https://mise.jdx.dev):
 
 ```sh
-make        # fmt-check + lint + test + deny (CI also runs make build)
+mise install
+```
+
+```sh
+make        # fmt-check + lint + test + deny + audit (CI also runs make build)
 make fmt    # format
 make run    # run from source
 ```
-
-`make deny` needs [cargo-deny](https://github.com/EmbarkStudios/cargo-deny).
 
 ## License
 

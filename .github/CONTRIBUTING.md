@@ -34,25 +34,26 @@ When suggesting a feature:
 
 - Fork the repository and create a feature branch from `main`.
 - Follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`).
-- Run `make` before submitting — it runs `cargo fmt --check`, `clippy`, the test suite and `cargo deny` (CI also runs `make build` and a zizmor audit of the workflows).
+- Run `make` before submitting — it runs `cargo fmt --check`, `clippy`, the test suite, `cargo deny` and a zizmor audit of the workflows (CI also runs `make build`).
 - Run `docs/manual-testing.md` if you touch terminal interaction or drawing.
 - Update `docs/spec/state-format.md` first if you change the state file format.
 - Link to the related issue using `Closes #123`.
 
 ## 🧰 Local Development
 
-The Rust toolchain is pinned in `rust-toolchain.toml`; [rustup](https://rustup.rs) installs and selects it automatically.
+The Rust toolchain is pinned in `rust-toolchain.toml`; [rustup](https://rustup.rs) installs and selects it automatically. The other development tools ([cargo-deny](https://github.com/EmbarkStudios/cargo-deny), [zizmor](https://github.com/zizmorcore/zizmor)) are pinned in `mise.toml`; run `mise install` once with [mise](https://mise.jdx.dev).
 
 ### Common Commands
 
 | Command | Description |
 |---|---|
-| `make` | `fmt-check` + `lint` + `test` + `deny` (CI also runs `make build`) |
+| `make` | `fmt-check` + `lint` + `test` + `deny` + `audit` (CI also runs `make build`) |
 | `make test` | Run the test suite |
 | `make fmt` | Format with rustfmt |
 | `make fmt-check` | Check formatting without writing |
 | `make lint` | Lint with clippy (warnings are errors) |
-| `make deny` | Check advisories, licenses and sources with [cargo-deny](https://github.com/EmbarkStudios/cargo-deny) |
+| `make deny` | Check advisories, licenses and sources with cargo-deny |
+| `make audit` | Audit the GitHub Actions workflows with zizmor (set `GH_TOKEN` for the online audits) |
 | `make run` | Run paneward from source |
 
 ## 📄 License

@@ -26,7 +26,7 @@
 
 ## Checklist
 
-- [ ] I have run `make` locally (`fmt-check`, `clippy`, tests, `cargo deny`) and it passes.
+- [ ] I have run `make` locally (`fmt-check`, `clippy`, tests, `cargo deny`, `zizmor`) and it passes.
 - [ ] I have run the relevant `docs/manual-testing.md` items if terminal interaction or drawing changed.
 - [ ] I have added tests for new logic (state parsing, sorting, backend output parsing).
 - [ ] I have updated `docs/spec/state-format.md` if the state file format changed.
