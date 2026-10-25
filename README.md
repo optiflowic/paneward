@@ -46,8 +46,8 @@ through a backend.
 ### Install
 
 Each [release](https://github.com/optiflowic/paneward/releases) from v0.1.1 on has
-an archive per platform, named `paneward-<version>-<target>.tar.gz` (`<version>` includes the `v`,
-e.g. `v0.1.0`):
+an archive per platform, named `paneward-<version>-<target>.tar.gz` (`<version>`
+includes the `v`, e.g. `v0.1.1`):
 
 | Platform                | `<target>` |
 |-------------------------|------------|
@@ -71,8 +71,10 @@ mkdir -p ~/.local/bin && mv paneward ~/.local/bin/
 ```
 
 `gh attestation verify` checks that the archive was built by this repository's
-release workflow. If `paneward` is not found afterwards, add `~/.local/bin` to your `PATH`, e.g. with
-`export PATH="$HOME/.local/bin:$PATH"` in your shell's startup file.
+release workflow. Rarely, a release has no attestation; the checksum still applies.
+If `paneward` is not found afterwards, add `~/.local/bin` to your
+`PATH`, e.g. with `export PATH="$HOME/.local/bin:$PATH"` in your shell's startup
+file.
 
 The macOS binaries are not notarized. If you download an archive with a browser,
 macOS may refuse to run it; remove the quarantine flag with
