@@ -50,10 +50,9 @@ jobs:
     if: >-
       !cancelled() && (github.event_name == 'workflow_dispatch'
       || needs.release-please.outputs.release_created == 'true')
-    # Release jobs queue instead of cancelling each other: a cancelled run would leave
-    # a release with only some of its binaries.
+    # Shares nothing with other runs, so no limit across runs: one group per run.
     concurrency:
-      group: ${{ github.workflow }}-release-tag-${{ github.event_name }}-${{ github.ref }}
+      group: ${{ github.workflow }}-release-tag-${{ github.run_id }}
       cancel-in-progress: false
     runs-on: ubuntu-latest
     permissions: {}
@@ -78,6 +77,8 @@ jobs:
   build:
     name: Build (${{ matrix.target }})
     needs: release-tag
+    # Without this, the skipped release-please job of a manual run would skip it too.
+    if: ${{ !cancelled() && needs.release-tag.result == 'success' }}
     strategy:
       fail-fast: false
       matrix:
@@ -91,22 +92,25 @@ jobs:
             os: ubuntu-latest
           - target: aarch64-unknown-linux-musl
             os: ubuntu-24.04-arm
+    # Runs for the same tag do not overlap. GitHub keeps at most one waiting job per
+    # group and replaces an older waiting one, which is fine: both build the same tag.
     concurrency:
       group: ${{ github.workflow }}-build-${{ needs.release-tag.outputs.tag }}-${{ matrix.target }}
       cancel-in-progress: false
     runs-on: ${{ matrix.os }}
+    # Build scripts and proc macros of dependencies run here, so this job gets no
+    # token that can sign or publish anything.
     permissions:
       contents: read # check out the tagged source
-      id-token: write # sign the build provenance attestation
-      attestations: write # store the build provenance attestation
     env:
       TARGET: ${{ matrix.target }}
       VERSION: ${{ needs.release-tag.outputs.version }}
     steps:
+      # A full ref: a branch with the same name as the tag must not be built instead.
       - name: 📥 Checkout the release tag
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.release-tag.outputs.tag }}
+          ref: refs/tags/${{ needs.release-tag.outputs.tag }}
           persist-credentials: false
 
       # Installs the toolchain pinned in rust-toolchain.toml. No build cache: a
@@ -129,11 +133,6 @@ jobs:
           tar -czf "$archive" -C "target/$TARGET/release" paneward -C "$GITHUB_WORKSPACE" LICENSE
           shasum -a 256 "$archive" > "$archive.sha256"
 
-      - name: 🔏 Attest build provenance
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
-        with:
-          subject-path: paneward-*.tar.gz
-
       - name: 📤 Upload the archive
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -141,9 +140,35 @@ jobs:
           path: paneward-*.tar.gz*
           if-no-files-found: error
 
+  attest:
+    name: Attest provenance
+    needs: [release-tag, build]
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
+    concurrency:
+      group: ${{ github.workflow }}-attest-${{ needs.release-tag.outputs.tag }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    # Signing is kept out of the build job, where dependency code runs.
+    permissions:
+      id-token: write # sign the build provenance attestation
+      attestations: write # store the build provenance attestation
+    steps:
+      - name: 📥 Download the archives
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: dist-*
+          merge-multiple: true
+          path: dist
+
+      - name: 🔏 Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/paneward-*.tar.gz
+
   publish:
     name: Attach binaries
-    needs: [release-tag, build]
+    needs: [release-tag, attest]
+    if: ${{ !cancelled() && needs.attest.result == 'success' }}
     concurrency:
       group: ${{ github.workflow }}-publish-${{ needs.release-tag.outputs.tag }}
       cancel-in-progress: false
