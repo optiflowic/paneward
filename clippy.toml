@@ -1,0 +1,2 @@
+# "WezTerm" is a product name, not a code identifier; keep the defaults too.
+doc-valid-idents = ["WezTerm", ".."]

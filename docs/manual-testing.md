@@ -33,6 +33,19 @@ installed and its hook writing state files (see `docs/spec/state-format.md`).
 - [ ] Dock layout fits a short (about 8 rows) split.
 - [ ] Resizing the pane redraws without artifacts.
 
+## WSL
+
+Run inside a WSL distribution opened by the Windows WezTerm, with `WEZTERM_PANE`
+forwarded through `WSLENV` (see `docs/spec/wezterm.md`, "WSL").
+
+- [ ] `echo $WEZTERM_PANE` prints the same id as `wezterm.exe cli list` shows for
+      that pane, and the hook's state file uses it.
+- [ ] paneward lists the sessions running in WSL panes (`wezterm.exe` is found).
+- [ ] Jumping focuses a pane in the same tab and in another tab.
+- [ ] The list stays responsive (no repeated timeout messages) with several panes open.
+- [ ] Without the `WSLENV` forwarding, paneward starts without errors and explains
+      that jumping is unavailable.
+
 ## Exit
 
 - [ ] `q` and `Ctrl-C` restore the terminal (cursor, no raw mode, no alternate screen left behind).
