@@ -42,6 +42,10 @@ pinned in `mise.toml`; install them with [mise](https://mise.jdx.dev):
 mise install
 ```
 
+`make` needs those tools on `PATH`: either
+[activate mise in your shell](https://mise.jdx.dev/getting-started.html#activate-mise)
+or run it as `mise exec -- make`.
+
 ```sh
 make        # fmt-check + lint + test + deny + audit (CI also runs make build)
 make fmt    # format

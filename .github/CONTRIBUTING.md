@@ -41,7 +41,7 @@ When suggesting a feature:
 
 ## 🧰 Local Development
 
-The Rust toolchain is pinned in `rust-toolchain.toml`; [rustup](https://rustup.rs) installs and selects it automatically. The other development tools ([cargo-deny](https://github.com/EmbarkStudios/cargo-deny), [zizmor](https://github.com/zizmorcore/zizmor)) are pinned in `mise.toml`; run `mise install` once with [mise](https://mise.jdx.dev).
+The Rust toolchain is pinned in `rust-toolchain.toml`; [rustup](https://rustup.rs) installs and selects it automatically. The other development tools ([cargo-deny](https://github.com/EmbarkStudios/cargo-deny), [zizmor](https://github.com/zizmorcore/zizmor)) are pinned in `mise.toml`; run `mise install` once with [mise](https://mise.jdx.dev). `make` needs them on `PATH`: either [activate mise in your shell](https://mise.jdx.dev/getting-started.html#activate-mise) or run `mise exec -- make`.
 
 ### Common Commands
 
