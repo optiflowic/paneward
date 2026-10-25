@@ -21,8 +21,8 @@ const STATE_DIR_NAME: &str = "paneward";
 /// Fallback for `XDG_STATE_HOME`, relative to `HOME`.
 const DEFAULT_STATE_HOME: &str = ".local/state";
 
-/// Extension of complete state files. Writers rename temporary files into place,
-/// so files with other names are still being written and must be skipped.
+/// Extension of complete state files. Writers give temporary files another name
+/// and rename them into place, so other files are still being written.
 const STATE_FILE_EXTENSION: &str = "json";
 
 /// What the agent of a session is doing.
@@ -37,7 +37,7 @@ pub enum Status {
 }
 
 /// One agent session, as recorded by its hook.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Session {
     pub agent: String,
     pub status: Status,
@@ -45,7 +45,7 @@ pub struct Session {
     pub pane_id: String,
     /// Last component of the session's working directory, or `pane <id>` without one.
     pub project: String,
-    /// Unix seconds of the last write, i.e. when the session entered `status`.
+    /// Unix seconds of the last write.
     pub updated_at: u64,
 }
 
