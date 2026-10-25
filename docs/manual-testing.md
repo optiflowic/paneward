@@ -43,6 +43,8 @@ forwarded through `WSLENV` (see `docs/spec/wezterm.md`, "WSL").
 - [ ] paneward lists the sessions running in WSL panes (`wezterm.exe` is found).
 - [ ] Jumping focuses a pane in the same tab and in another tab.
 - [ ] The list stays responsive (no repeated timeout messages) with several panes open.
+- [ ] Without the `WSLENV` forwarding, paneward starts without errors and explains
+      that jumping is unavailable.
 
 ## Exit
 
