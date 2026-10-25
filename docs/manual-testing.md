@@ -28,7 +28,9 @@ support as not tested. Once it passes, remove that note from the README and the
 - [ ] Sessions are ordered `waiting`, `running`, `idle`, then by project name.
 - [ ] Ending the session (agent exits normally) removes it from the list.
 - [ ] Closing the pane without ending the session hides it from the list.
-- [ ] After restarting the terminal, sessions from the previous run are not shown.
+- [ ] After restarting the terminal, sessions from the previous run are not shown,
+      even once a new pane gets the same id as an old one (needs a hook that writes
+      `terminal_instance`; leave a state file behind by force-quitting WezTerm).
 
 ## Jump
 
