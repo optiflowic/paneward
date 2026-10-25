@@ -21,6 +21,7 @@ One file per terminal pane. Example: `~/.local/state/paneward/wezterm-12.json`.
   "status": "running",
   "terminal": "wezterm",
   "pane_id": "12",
+  "terminal_instance": "/home/me/.local/share/wezterm/gui-sock-example",
   "cwd": "/home/me/src/project",
   "session_id": "757d3262-7975-427c-9ef1-7acc74732b57",
   "started_at": 1792858467,
@@ -35,6 +36,7 @@ One file per terminal pane. Example: `~/.local/state/paneward/wezterm-12.json`.
 | `status`     | string | yes      | `running`, `waiting` or `idle` (see below). |
 | `terminal`   | string | yes      | Terminal backend: `wezterm` (later `tmux`, ...). |
 | `pane_id`    | string | yes      | Pane id as the terminal reports it, always a string (`"12"`, `"%3"`). |
+| `terminal_instance` | string | no | The running terminal the pane belongs to (see below). |
 | `cwd`        | string | no       | Working directory of the session. |
 | `session_id` | string | no       | Agent-specific session id. |
 | `started_at` | number | no       | Unix seconds when the session started. Preserved across updates. |
@@ -48,6 +50,15 @@ One file per terminal pane. Example: `~/.local/state/paneward/wezterm-12.json`.
 | `waiting` | The agent is blocked on the user (e.g. a permission prompt). |
 | `idle`    | The agent finished its turn and waits for the next prompt. |
 
+### Terminal instance
+
+Pane ids are only unique within one run of a terminal: after a restart they start
+again from the beginning, so a file left behind by a crash can match a new pane.
+`terminal_instance` tells runs apart. It is an opaque string that changes whenever
+the terminal starts again; each backend memo in `docs/spec/` defines its value
+(WezTerm: `WEZTERM_UNIX_SOCKET`). Readers compare it for equality only, and treat
+an empty string like a missing field.
+
 ## Rules for writers
 
 - Write atomically: write to a temporary file in the same directory, then rename.
@@ -55,6 +66,7 @@ One file per terminal pane. Example: `~/.local/state/paneward/wezterm-12.json`.
 - Delete the file when the session ends.
 - Never block or fail the agent. If anything goes wrong, exit successfully without writing.
 - Do nothing when the terminal cannot be identified (e.g. not running inside WezTerm).
+- Write `terminal_instance` whenever the backend memo's value is available.
 
 ## Rules for readers
 
@@ -69,3 +81,6 @@ One file per terminal pane. Example: `~/.local/state/paneward/wezterm-12.json`.
   status changes itself.
 - Files can outlive their pane (crash, terminal restart). Show a file only when its
   pane currently exists in that terminal.
+- When both the file and the reader know the terminal instance and the two differ,
+  the file belongs to an earlier run of the terminal: skip it. When either side does
+  not know it, decide by the pane alone.

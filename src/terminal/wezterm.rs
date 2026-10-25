@@ -16,6 +16,10 @@ use super::Terminal;
 /// Set by WezTerm in every pane it spawns.
 const PANE_ENV: &str = "WEZTERM_PANE";
 
+/// Socket of the WezTerm process that owns the panes; it changes on every start, so it
+/// tells runs of WezTerm apart (the memo's "Terminal instance").
+const INSTANCE_ENV: &str = "WEZTERM_UNIX_SOCKET";
+
 /// Set by WSL in every process of a distribution.
 const WSL_ENV: &str = "WSL_DISTRO_NAME";
 
@@ -38,6 +42,7 @@ const EXIT_POLL_INTERVAL: Duration = Duration::from_millis(5);
 pub struct WezTerm {
     /// The `wezterm` executable to run.
     program: &'static str,
+    instance: Option<String>,
 }
 
 /// One entry of `wezterm cli list --format json`. Other fields are ignored.
@@ -54,13 +59,19 @@ impl WezTerm {
             return None;
         }
         let program = program_for(env::var_os(WSL_ENV).as_deref());
-        Some(Self { program })
+        let instance = instance_from(env::var(INSTANCE_ENV).ok());
+        Some(Self { program, instance })
     }
 
     fn list_panes(&self) -> Result<Vec<ListedPane>> {
         let output = run_cli(self.program, &["list", "--format", "json"])?;
         parse_list(&output)
     }
+}
+
+/// An unset or empty `WEZTERM_UNIX_SOCKET` means the instance is unknown.
+fn instance_from(socket: Option<String>) -> Option<String> {
+    socket.filter(|socket| !socket.is_empty())
 }
 
 /// Picks the executable from `WSL_DISTRO_NAME` (see the memo's WSL section).
@@ -74,6 +85,10 @@ fn program_for(wsl_distro_name: Option<&OsStr>) -> &'static str {
 impl Terminal for WezTerm {
     fn name(&self) -> &'static str {
         "wezterm"
+    }
+
+    fn instance(&self) -> Option<&str> {
+        self.instance.as_deref()
     }
 
     fn live_pane_ids(&self) -> Result<HashSet<String>> {
@@ -245,6 +260,18 @@ mod tests {
         assert_eq!(status, None);
         assert!(started.elapsed() < Duration::from_secs(5));
         assert!(child.try_wait().unwrap().is_some(), "the child was reaped");
+    }
+
+    #[test]
+    fn the_socket_identifies_the_instance() {
+        let socket = "/home/me/.local/share/wezterm/gui-sock-example";
+        assert_eq!(instance_from(Some(socket.into())).as_deref(), Some(socket));
+    }
+
+    #[test]
+    fn an_unset_or_empty_socket_leaves_the_instance_unknown() {
+        assert_eq!(instance_from(None), None);
+        assert_eq!(instance_from(Some(String::new())), None);
     }
 
     #[test]

@@ -43,6 +43,8 @@ pub struct Session {
     pub status: Status,
     pub terminal: String,
     pub pane_id: String,
+    /// Which run of the terminal the pane belongs to, if the writer recorded it.
+    pub terminal_instance: Option<String>,
     /// Last component of the session's working directory, or `pane <id>` without one.
     pub project: String,
     /// Unix seconds of the last write.
@@ -57,6 +59,7 @@ struct StateFile {
     status: Status,
     terminal: String,
     pane_id: String,
+    terminal_instance: Option<String>,
     cwd: Option<String>,
     updated_at: u64,
 }
@@ -124,6 +127,10 @@ fn parse_session(text: &str) -> Option<Session> {
         status: file.status,
         terminal: file.terminal,
         pane_id: file.pane_id,
+        // An empty value says nothing about the instance (the spec treats it as missing).
+        terminal_instance: file
+            .terminal_instance
+            .filter(|instance| !instance.is_empty()),
         project,
         updated_at: file.updated_at,
     })
@@ -158,6 +165,7 @@ mod tests {
         "status": "running",
         "terminal": "wezterm",
         "pane_id": "12",
+        "terminal_instance": "/home/me/.local/share/wezterm/gui-sock-example",
         "cwd": "/home/me/src/project",
         "session_id": "757d3262-7975-427c-9ef1-7acc74732b57",
         "started_at": 1792858467,
@@ -187,6 +195,7 @@ mod tests {
                 status: Status::Running,
                 terminal: "wezterm".into(),
                 pane_id: "12".into(),
+                terminal_instance: Some("/home/me/.local/share/wezterm/gui-sock-example".into()),
                 project: "project".into(),
                 updated_at: 1_792_858_641,
             }
@@ -211,7 +220,14 @@ mod tests {
                        "pane_id":"%3","updated_at":5}"#;
         let session = parse_session(text).unwrap();
         assert_eq!(session.agent, "codex");
+        assert_eq!(session.terminal_instance, None);
         assert_eq!(session.project, "pane %3");
+    }
+
+    #[test]
+    fn treats_an_empty_terminal_instance_as_unknown() {
+        let text = VALID.replace("/home/me/.local/share/wezterm/gui-sock-example", "");
+        assert_eq!(parse_session(&text).unwrap().terminal_instance, None);
     }
 
     #[test]

@@ -37,8 +37,10 @@ through a backend.
   `${XDG_STATE_HOME:-$HOME/.local/state}/paneward/`, in the
   [state file format](docs/spec/state-format.md). No hook ships with paneward yet:
   write one against that spec (Claude Code, for example, can run a command on its
-  hook events). paneward only reads these files; it does not install hooks or
-  change agent settings.
+  hook events). Have the hook write `terminal_instance` (for WezTerm, the value of
+  `WEZTERM_UNIX_SOCKET`): without it, an old session left by a crash can show up
+  again after WezTerm restarts and reuses its pane id. paneward only reads these
+  files; it does not install hooks or change agent settings.
 - Rust 1.99 or later to build it.
 
 ### Install and run

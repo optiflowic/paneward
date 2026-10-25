@@ -16,6 +16,19 @@ is unavailable.
 
 The state files name this backend `wezterm` (the `terminal` field).
 
+## Terminal instance
+
+The state file's `terminal_instance` for WezTerm is the value of
+`WEZTERM_UNIX_SOCKET`, which WezTerm also sets in every pane: the socket of the
+process that owns the panes, e.g. `$HOME/.local/share/wezterm/gui-sock-<pid>`.
+`<pid>` is that process's id, so the value changes when WezTerm starts again.
+The hook reads it from its environment; paneward reads its own, since it runs in a
+pane of the same WezTerm. Without the variable (empty or unset), the instance is
+unknown.
+
+Not checked: panes of a separate `wezterm-mux-server` are expected to carry the
+server's socket, which survives GUI restarts, as their panes do.
+
 ## Commands
 
 Every command is run as `wezterm cli --no-auto-start <subcommand>` (`wezterm.exe`
@@ -80,6 +93,9 @@ Not checked yet. This describes the expected setup; fix it once the WSL items in
   running inside WSL (WSLg) is not supported by this rule.
 - **Ids.** `wezterm.exe cli list` is expected to report the same `pane_id` as the
   forwarded `WEZTERM_PANE` (and so as the state files). Unverified.
+- **Terminal instance.** `WSLENV=WEZTERM_PANE/u` forwards only the pane id, so
+  `WEZTERM_UNIX_SOCKET` is unknown inside WSL and files are matched by pane alone.
+  Forwarding it as well (with `/p` to translate the path) is untested.
 - **Startup time.** Interop starts a Windows process for every call, which is slower
   than on macOS or Linux. The 2-second timeout (see Quirks) also applies here.
 
