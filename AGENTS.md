@@ -88,8 +88,10 @@ the memo, fix the memo in the same PR.
 
 ## Workflow
 
-- Never commit on `main`. Create a branch (`feat/<issue-number>-<short-description>`)
-  and open a pull request.
+- Never commit on `main`. Open an issue, create a branch named
+  `<type>/<issue-number>-<short-description>`, where `<type>` is the Conventional
+  Commits type of the change (`feat/12-state-module`, `fix/15-…`, `docs/16-…`), and
+  open a pull request.
 - Commits: Conventional Commits (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`,
   `chore:`, `ci:`). Small, single-purpose commits.
 - CI (GitHub Actions): lint (`fmt-check`, `clippy`), security (`cargo deny`),
