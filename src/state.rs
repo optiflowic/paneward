@@ -167,9 +167,9 @@ mod tests {
         "pane_id": "12",
         "terminal_instance": "/home/me/.local/share/wezterm/gui-sock-example",
         "cwd": "/home/me/src/project",
-        "session_id": "757d3262-7975-427c-9ef1-7acc74732b57",
-        "started_at": 1792858467,
-        "updated_at": 1792858641
+        "session_id": "00000000-0000-0000-0000-000000000000",
+        "started_at": 1700000000,
+        "updated_at": 1700000060
     }"#;
 
     fn state_json(status: &str, pane_id: &str, cwd: &str) -> String {
@@ -197,7 +197,7 @@ mod tests {
                 pane_id: "12".into(),
                 terminal_instance: Some("/home/me/.local/share/wezterm/gui-sock-example".into()),
                 project: "project".into(),
-                updated_at: 1_792_858_641,
+                updated_at: 1_700_000_060,
             }
         );
     }
