@@ -3,14 +3,6 @@ name: 📦 release-please
 on:
   push:
     branches: [main]
-  # Attaches binaries to a release that already exists, e.g. one created before
-  # this workflow built them.
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: Release tag to build and attach binaries to (e.g. paneward-v0.1.0)
-        required: true
-        type: string
 
 # Deny everything by default; each job asks only for what it needs.
 permissions: {}
@@ -21,13 +13,11 @@ env:
 jobs:
   release-please:
     name: Release PR
-    if: github.event_name == 'push'
     runs-on: ubuntu-latest
-    # Release PR updates must not race each other; let the latest push win. Only
-    # this job: a newer push must not cancel the build of a release just created.
+    # Never cancelled, so the run that creates a release is the one for its commit.
     concurrency:
       group: ${{ github.workflow }}-${{ github.ref }}
-      cancel-in-progress: true
+      cancel-in-progress: false
     # Uses the short-lived GITHUB_TOKEN on purpose: no long-lived secret to leak.
     # Release PRs opened with it do not trigger CI; they only bump versions and the
     # changelog, and are merged through the Ruleset bypass (pull requests only).
@@ -38,69 +28,35 @@ jobs:
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.version.outputs.version }}
     steps:
       - name: 🚀 Run release-please
         id: release
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
 
-  release-tag:
-    name: Release tag
-    needs: release-please
-    # Runs for a release just created, or a manual run (release-please is skipped then).
-    if: >-
-      !cancelled() && (github.event_name == 'workflow_dispatch'
-      || needs.release-please.outputs.release_created == 'true')
-    # Shares nothing with other runs, so no limit across runs: one group per run.
-    concurrency:
-      group: ${{ github.workflow }}-release-tag-${{ github.run_id }}
-      cancel-in-progress: false
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read # resolve the commit the tag points to
-    outputs:
-      tag: ${{ steps.tag.outputs.tag }}
-      version: ${{ steps.tag.outputs.version }}
-      commit: ${{ steps.commit.outputs.commit }}
-      attest: ${{ steps.commit.outputs.attest }}
-    steps:
-      # The tag comes from user input on manual runs: check its shape before any job
-      # uses it, and never echo it.
-      - name: 🏷️ Validate the release tag
-        id: tag
-        env:
-          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || needs.release-please.outputs.tag_name }}
-        run: |
-          if [[ ! "$TAG" =~ ^paneward-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::The tag must look like paneward-vX.Y.Z."
-            exit 1
-          fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "version=${TAG#paneward-}" >> "$GITHUB_OUTPUT"
-
-      # Resolved once, so every build checks out the same commit even if the tag moves.
-      # Build provenance records the commit of this workflow run, not of the checkout:
-      # attest only when the two are the same (a release just created by this push).
-      # A manual run for an older release attaches binaries without provenance.
-      - name: 🔗 Resolve the tag's commit
-        id: commit
+      # Builds and provenance use this run's commit; stop if the tag is elsewhere.
+      - name: 🔗 Check that the tag is this commit
+        id: version
+        if: steps.release.outputs.release_created == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.tag.outputs.tag }}
+          TAG: ${{ steps.release.outputs.tag_name }}
         run: |
           ref=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG")
           commit=$(jq -r .object.sha <<<"$ref")
           if [[ "$(jq -r .object.type <<<"$ref")" == tag ]]; then
             commit=$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$commit" --jq .object.sha)
           fi
-          echo "commit=$commit" >> "$GITHUB_OUTPUT"
-          if [[ "$commit" == "$GITHUB_SHA" ]]; then attest=true; else attest=false; fi
-          echo "attest=$attest" >> "$GITHUB_OUTPUT"
+          if [[ "$commit" != "$GITHUB_SHA" ]]; then
+            echo "::error::The release tag does not point at this run's commit; no binaries attached."
+            exit 1
+          fi
+          echo "version=${TAG#paneward-}" >> "$GITHUB_OUTPUT"
 
   build:
     name: Build (${{ matrix.target }})
-    needs: release-tag
-    # Without this, the skipped release-please job of a manual run would skip it too.
-    if: ${{ !cancelled() && needs.release-tag.result == 'success' }}
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -109,35 +65,29 @@ jobs:
             os: macos-latest
           - target: x86_64-apple-darwin
             os: macos-latest
-          # Linux builds link musl statically, so they run on any distribution and in WSL.
+          # Static musl binaries run on any distribution and in WSL.
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
           - target: aarch64-unknown-linux-musl
             os: ubuntu-24.04-arm
-    # Runs for the same tag do not overlap. GitHub keeps at most one waiting job per
-    # group and replaces an older waiting one, which is fine: both build the same tag.
+    # A cancelled build would leave the release without binaries.
     concurrency:
-      group: ${{ github.workflow }}-build-${{ needs.release-tag.outputs.tag }}-${{ matrix.target }}
+      group: ${{ github.workflow }}-build-${{ needs.release-please.outputs.tag_name }}-${{ matrix.target }}
       cancel-in-progress: false
     runs-on: ${{ matrix.os }}
-    # Build scripts and proc macros of dependencies run here, so this job gets no
-    # token that can sign or publish anything.
+    # Dependency build scripts run here: no token that can sign or publish.
     permissions:
-      contents: read # check out the tagged source
+      contents: read # check out the release commit
     env:
       TARGET: ${{ matrix.target }}
-      VERSION: ${{ needs.release-tag.outputs.version }}
+      VERSION: ${{ needs.release-please.outputs.version }}
     steps:
-      # The commit the tag pointed to when release-tag resolved it, not the tag name:
-      # neither a branch with the same name nor a moved tag can be built instead.
       - name: 📥 Checkout the release commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.release-tag.outputs.commit }}
           persist-credentials: false
 
-      # Installs the toolchain pinned in rust-toolchain.toml. No build cache: a
-      # release binary must not be built from a cache other runs can write to.
+      # No cache: other runs could write to it (cache poisoning).
       - name: 🦀 Install Rust toolchain
         run: |
           rustup toolchain install
@@ -154,7 +104,6 @@ jobs:
         run: |
           archive="paneward-$VERSION-$TARGET.tar.gz"
           tar -czf "$archive" -C "target/$TARGET/release" paneward -C "$GITHUB_WORKSPACE" LICENSE
-          # sha256sum (coreutils) on Linux, shasum on macOS; both print the same format.
           if command -v sha256sum >/dev/null; then
             sha256sum "$archive" > "$archive.sha256"
           else
@@ -170,15 +119,11 @@ jobs:
 
   attest:
     name: Attest provenance
-    needs: [release-tag, build]
-    if: >-
-      ${{ !cancelled() && needs.build.result == 'success'
-      && needs.release-tag.outputs.attest == 'true' }}
+    needs: [release-please, build]
     concurrency:
-      group: ${{ github.workflow }}-attest-${{ needs.release-tag.outputs.tag }}
+      group: ${{ github.workflow }}-attest-${{ needs.release-please.outputs.tag_name }}
       cancel-in-progress: false
     runs-on: ubuntu-latest
-    # Signing is kept out of the build job, where dependency code runs.
     permissions:
       id-token: write # sign the build provenance attestation
       attestations: write # store the build provenance attestation
@@ -197,13 +142,9 @@ jobs:
 
   publish:
     name: Attach binaries
-    needs: [release-tag, build, attest]
-    # attest is skipped on purpose for a manual run of an older release.
-    if: >-
-      ${{ !cancelled() && needs.build.result == 'success'
-      && (needs.attest.result == 'success' || needs.attest.result == 'skipped') }}
+    needs: [release-please, attest]
     concurrency:
-      group: ${{ github.workflow }}-publish-${{ needs.release-tag.outputs.tag }}
+      group: ${{ github.workflow }}-publish-${{ needs.release-please.outputs.tag_name }}
       cancel-in-progress: false
     runs-on: ubuntu-latest
     permissions:
@@ -216,10 +157,10 @@ jobs:
           merge-multiple: true
           path: dist
 
-      # --clobber lets a manual rerun replace the assets of an earlier run.
+      # --clobber: "Re-run failed jobs" replaces assets of the failed attempt.
       - name: 🚀 Upload to the release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          TAG: ${{ needs.release-tag.outputs.tag }}
+          TAG: ${{ needs.release-please.outputs.tag_name }}
         run: gh release upload "$TAG" dist/* --clobber
