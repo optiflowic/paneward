@@ -111,8 +111,11 @@ fn split_for_message(area: Rect, message: Option<&str>) -> (Rect, Option<Rect>) 
 }
 
 fn message_height(message: &str, width: u16) -> u16 {
-    let text_width = Line::from(message).width();
-    let lines = text_width.div_ceil(usize::from(width.max(1)));
+    let width = usize::from(width.max(1));
+    let lines: usize = message
+        .lines()
+        .map(|line| Line::from(line).width().div_ceil(width).max(1))
+        .sum();
     u16::try_from(lines)
         .unwrap_or(MAX_MESSAGE_LINES)
         .clamp(1, MAX_MESSAGE_LINES)
@@ -273,6 +276,12 @@ mod tests {
         assert_eq!(message_height(&"x".repeat(29), 28), 2);
         assert_eq!(message_height(&"x".repeat(500), 28), MAX_MESSAGE_LINES);
         assert_eq!(message_height("x", 0), 1);
+    }
+
+    #[test]
+    fn message_height_counts_each_line_of_a_multi_line_message() {
+        assert_eq!(message_height("first\nsecond", 28), 2);
+        assert_eq!(message_height(&format!("{}\nshort", "x".repeat(29)), 28), 3);
     }
 
     #[test]
