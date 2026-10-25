@@ -74,5 +74,9 @@ nothing.
   e.g. `ERROR wezterm > unexpected response ... "Error: pane 99999 not found"` or
   `could not determine which pane should be active for tab 99999`. paneward shows
   the failure as a message.
+- **Inherited `WEZTERM_PANE`.** The variable survives into tmux inside WezTerm and
+  into `ssh` sessions that forward it, where `wezterm cli` may be missing or unable
+  to reach the GUI. Detection only checks the variable; a failing `wezterm cli`
+  surfaces as an error message in paneward, not as a crash.
 - **Ids are numbers.** `list` reports `pane_id` and `tab_id` as JSON numbers, while
   the state file stores `pane_id` as a string (`"16"`).
