@@ -68,7 +68,7 @@ fn run(
 ) -> Result<()> {
     let (sender, events) = mpsc::channel();
     spawn_input_reader(sender.clone());
-    let mut watcher = StateWatcher::new(sender, state_dir)?;
+    let mut watcher = StateWatcher::new(sender, state_dir);
     let mut last_refresh = Instant::now();
 
     while !app.should_quit() {
@@ -128,16 +128,17 @@ fn spawn_input_reader(sender: Sender<Event>) {
 
 /// Watches the state directory and reports changes as [`Event::StateChanged`].
 ///
-/// The directory may not exist yet: watching starts once it does, and until then the
-/// periodic refresh picks up new sessions.
+/// Watching only makes updates instant: the periodic refresh picks up changes anyway.
+/// So the directory may not exist yet (watching starts once it does), and a watcher
+/// that cannot start (e.g. out of inotify instances) is simply left out.
 struct StateWatcher {
-    watcher: RecommendedWatcher,
+    watcher: Option<RecommendedWatcher>,
     dir: Option<PathBuf>,
     is_watching: bool,
 }
 
 impl StateWatcher {
-    fn new(sender: Sender<Event>, dir: Option<&Path>) -> Result<Self> {
+    fn new(sender: Sender<Event>, dir: Option<&Path>) -> Self {
         let watcher = notify::recommended_watcher(move |result: notify::Result<notify::Event>| {
             let Ok(event) = result else {
                 return;
@@ -147,25 +148,25 @@ impl StateWatcher {
                 let _ = sender.send(Event::StateChanged);
             }
         })
-        .context("failed to start watching files")?;
+        .ok();
         let mut state_watcher = Self {
             watcher,
             dir: dir.map(Path::to_path_buf),
             is_watching: false,
         };
         state_watcher.watch_if_needed();
-        Ok(state_watcher)
+        state_watcher
     }
 
     fn watch_if_needed(&mut self) {
-        let Some(dir) = &self.dir else {
+        let (Some(watcher), Some(dir)) = (&mut self.watcher, &self.dir) else {
             return;
         };
         if self.is_watching {
             return;
         }
         // Failing here means the directory does not exist (yet); try again later.
-        self.is_watching = self.watcher.watch(dir, RecursiveMode::NonRecursive).is_ok();
+        self.is_watching = watcher.watch(dir, RecursiveMode::NonRecursive).is_ok();
     }
 }
 
