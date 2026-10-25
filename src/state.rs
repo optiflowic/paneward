@@ -165,10 +165,16 @@ mod tests {
     }"#;
 
     fn state_json(status: &str, pane_id: &str, cwd: &str) -> String {
-        format!(
-            r#"{{"version":1,"agent":"claude","status":"{status}","terminal":"wezterm",
-                "pane_id":"{pane_id}","cwd":"{cwd}","updated_at":100}}"#
-        )
+        serde_json::json!({
+            "version": 1,
+            "agent": "claude",
+            "status": status,
+            "terminal": "wezterm",
+            "pane_id": pane_id,
+            "cwd": cwd,
+            "updated_at": 100,
+        })
+        .to_string()
     }
 
     #[test]
@@ -312,6 +318,12 @@ mod tests {
         std::os::unix::fs::symlink(&target, dir.path().join("wezterm-1.json")).unwrap();
 
         assert_eq!(load_sessions(dir.path()).unwrap(), []);
+    }
+
+    #[test]
+    fn project_name_keeps_characters_that_need_json_escaping() {
+        let session = parse_session(&state_json("idle", "1", r#"/src/say "hi"\x"#)).unwrap();
+        assert_eq!(session.project, r#"say "hi"\x"#);
     }
 
     #[test]
