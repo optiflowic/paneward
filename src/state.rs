@@ -137,7 +137,8 @@ fn project_name(cwd: Option<&str>, pane_id: &str) -> String {
 }
 
 /// Orders sessions by status (`waiting`, `running`, `idle`), then by project name.
-/// The pane id breaks ties so the order does not jump between reloads.
+/// The pane id breaks ties so the order does not jump between reloads. It is
+/// compared as a string: any fixed order will do, and ids are not always numbers.
 fn sort_for_display(sessions: &mut [Session]) {
     sessions.sort_by(|a, b| {
         a.status
