@@ -16,6 +16,10 @@ use super::Terminal;
 /// Set by WezTerm in every pane it spawns.
 const PANE_ENV: &str = "WEZTERM_PANE";
 
+/// Socket of the WezTerm process that owns the panes; it changes on every start, so it
+/// tells runs of WezTerm apart (the memo's "Terminal instance").
+const INSTANCE_ENV: &str = "WEZTERM_UNIX_SOCKET";
+
 /// Set by WSL in every process of a distribution.
 const WSL_ENV: &str = "WSL_DISTRO_NAME";
 
@@ -38,6 +42,7 @@ const EXIT_POLL_INTERVAL: Duration = Duration::from_millis(5);
 pub struct WezTerm {
     /// The `wezterm` executable to run.
     program: &'static str,
+    instance: Option<String>,
 }
 
 /// One entry of `wezterm cli list --format json`. Other fields are ignored.
@@ -54,7 +59,10 @@ impl WezTerm {
             return None;
         }
         let program = program_for(env::var_os(WSL_ENV).as_deref());
-        Some(Self { program })
+        let instance = env::var(INSTANCE_ENV)
+            .ok()
+            .filter(|socket| !socket.is_empty());
+        Some(Self { program, instance })
     }
 
     fn list_panes(&self) -> Result<Vec<ListedPane>> {
@@ -74,6 +82,10 @@ fn program_for(wsl_distro_name: Option<&OsStr>) -> &'static str {
 impl Terminal for WezTerm {
     fn name(&self) -> &'static str {
         "wezterm"
+    }
+
+    fn instance(&self) -> Option<&str> {
+        self.instance.as_deref()
     }
 
     fn live_pane_ids(&self) -> Result<HashSet<String>> {

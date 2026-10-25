@@ -96,6 +96,7 @@ impl App {
             return;
         };
         let terminal_name = terminal.name();
+        let instance = terminal.instance().map(str::to_owned);
         let panes_result = terminal.live_pane_ids();
         let sessions_result = self.load_sessions();
         let mut errors = Vec::new();
@@ -104,7 +105,7 @@ impl App {
             Err(err) => errors.push(format!("Cannot list panes: {err:#}")),
         }
         match sessions_result {
-            Ok(sessions) => self.show_sessions(sessions, terminal_name),
+            Ok(sessions) => self.show_sessions(sessions, terminal_name, instance.as_deref()),
             Err(err) => errors.push(format!("Cannot read sessions: {err:#}")),
         }
         self.refresh_error = (!errors.is_empty()).then(|| errors.join(" "));
@@ -117,8 +118,13 @@ impl App {
         }
     }
 
-    fn show_sessions(&mut self, sessions: Vec<Session>, terminal_name: &str) {
-        let live = sessions_in_live_panes(sessions, terminal_name, &self.live_pane_ids);
+    fn show_sessions(
+        &mut self,
+        sessions: Vec<Session>,
+        terminal_name: &str,
+        instance: Option<&str>,
+    ) {
+        let live = sessions_in_live_panes(sessions, terminal_name, instance, &self.live_pane_ids);
         let listed = with_status_since(&self.sessions, live);
         self.selected = reselect(&self.sessions, self.selected, &listed);
         self.sessions = listed;
@@ -177,19 +183,32 @@ fn jump_number_index(digit: char) -> Option<usize> {
     (1..=MAX_JUMP_NUMBER).contains(&number).then(|| number - 1)
 }
 
-/// Keeps the sessions whose pane exists in this terminal. A state file can outlive
-/// its pane, and panes of other terminals cannot be checked.
+/// Keeps the sessions whose pane exists in this run of this terminal. A state file
+/// can outlive its pane, panes of other terminals cannot be checked, and after a
+/// terminal restart a new pane can reuse the id of an old one.
 fn sessions_in_live_panes(
     sessions: Vec<Session>,
     terminal_name: &str,
+    instance: Option<&str>,
     live_pane_ids: &HashSet<String>,
 ) -> Vec<Session> {
     sessions
         .into_iter()
         .filter(|session| {
-            session.terminal == terminal_name && live_pane_ids.contains(&session.pane_id)
+            session.terminal == terminal_name
+                && is_same_run(session.terminal_instance.as_deref(), instance)
+                && live_pane_ids.contains(&session.pane_id)
         })
         .collect()
+}
+
+/// Whether a state file comes from the running terminal. When either side does not
+/// know the instance, only the pane can decide (`docs/spec/state-format.md`).
+fn is_same_run(file_instance: Option<&str>, current_instance: Option<&str>) -> bool {
+    match (file_instance, current_instance) {
+        (Some(file), Some(current)) => file == current,
+        _ => true,
+    }
 }
 
 /// Carries over when each session's status started from the previous list. A new
@@ -243,6 +262,7 @@ mod tests {
             status,
             terminal: "wezterm".into(),
             pane_id: pane_id.into(),
+            terminal_instance: None,
             project: format!("project-{pane_id}"),
             updated_at,
         }
@@ -309,10 +329,34 @@ mod tests {
             tmux,
         ];
 
-        let kept = sessions_in_live_panes(sessions, "wezterm", &ids(&["1", "3"]));
+        let kept = sessions_in_live_panes(sessions, "wezterm", None, &ids(&["1", "3"]));
 
         let panes: Vec<&str> = kept.iter().map(|s| s.pane_id.as_str()).collect();
         assert_eq!(panes, ["1"]);
+    }
+
+    #[test]
+    fn hides_sessions_from_an_earlier_run_of_the_terminal() {
+        let mut old_run = session("1", Status::Idle, 1);
+        old_run.terminal_instance = Some("gui-sock-1".into());
+        let mut this_run = session("2", Status::Idle, 1);
+        this_run.terminal_instance = Some("gui-sock-2".into());
+        let sessions = vec![old_run, this_run];
+
+        let kept =
+            sessions_in_live_panes(sessions, "wezterm", Some("gui-sock-2"), &ids(&["1", "2"]));
+
+        let panes: Vec<&str> = kept.iter().map(|s| s.pane_id.as_str()).collect();
+        assert_eq!(panes, ["2"]);
+    }
+
+    #[test]
+    fn decides_by_pane_alone_when_an_instance_is_unknown() {
+        assert!(is_same_run(None, Some("gui-sock-2")));
+        assert!(is_same_run(Some("gui-sock-1"), None));
+        assert!(is_same_run(None, None));
+        assert!(is_same_run(Some("gui-sock-2"), Some("gui-sock-2")));
+        assert!(!is_same_run(Some("gui-sock-1"), Some("gui-sock-2")));
     }
 
     #[test]
@@ -354,8 +398,11 @@ mod tests {
         assert_eq!(reselect(&previous, 1, &[]), 0);
     }
 
+    const CURRENT_INSTANCE: &str = "gui-sock-2";
+
     /// A terminal that reports fixed panes and records what it was asked to focus.
     struct FakeTerminal {
+        instance: Option<&'static str>,
         live_pane_ids: Result<HashSet<String>, String>,
         focused: Rc<RefCell<Vec<String>>>,
     }
@@ -363,6 +410,10 @@ mod tests {
     impl Terminal for FakeTerminal {
         fn name(&self) -> &'static str {
             "wezterm"
+        }
+
+        fn instance(&self) -> Option<&str> {
+            self.instance
         }
 
         fn live_pane_ids(&self) -> Result<HashSet<String>> {
@@ -399,6 +450,7 @@ mod tests {
         }
         let focused = Rc::new(RefCell::new(Vec::new()));
         let terminal = FakeTerminal {
+            instance: Some(CURRENT_INSTANCE),
             live_pane_ids: Ok(ids(live_panes)),
             focused: Rc::clone(&focused),
         };
@@ -434,6 +486,20 @@ mod tests {
     }
 
     #[test]
+    fn refresh_hides_a_session_left_by_an_earlier_run_in_a_reused_pane() {
+        let Fixture { mut app, dir, .. } = fixture(&["1"], &["1", "2"]);
+        let text = serde_json::json!({
+            "version": 1, "agent": "claude", "status": "idle", "terminal": "wezterm",
+            "pane_id": "2", "terminal_instance": "gui-sock-1", "updated_at": 50,
+        });
+        fs::write(dir.path().join("wezterm-2.json"), text.to_string()).unwrap();
+
+        app.refresh();
+
+        assert_eq!(shown_panes(&app), ["1"]);
+    }
+
+    #[test]
     fn refresh_picks_up_new_state_files() {
         let Fixture { mut app, dir, .. } = fixture(&["1"], &["1", "2"]);
         write_state(&dir, "2", "waiting");
@@ -445,6 +511,7 @@ mod tests {
     fn refresh_keeps_the_last_panes_when_listing_fails() {
         let Fixture { mut app, dir, .. } = fixture(&["1"], &["1"]);
         app.terminal = Some(Box::new(FakeTerminal {
+            instance: Some(CURRENT_INSTANCE),
             live_pane_ids: Err("wezterm is gone".into()),
             focused: Rc::default(),
         }));
@@ -504,6 +571,7 @@ mod tests {
     fn a_failed_jump_shows_a_message_until_the_next_key() {
         let Fixture { mut app, .. } = fixture(&["1"], &["1"]);
         app.terminal = Some(Box::new(FakeTerminal {
+            instance: Some(CURRENT_INSTANCE),
             live_pane_ids: Ok(HashSet::new()),
             focused: Rc::default(),
         }));
