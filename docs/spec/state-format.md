@@ -63,5 +63,9 @@ One file per terminal pane. Example: `~/.local/state/paneward/wezterm-12.json`.
   temporary files; symlinks, directories and FIFOs are never state files.
 - Skip files that fail to parse, have an unknown `version`, or an unknown `status`.
 - Ignore unknown fields (new optional fields are not a version bump).
+- `updated_at` is the time of the last write, not of the last status change: writers
+  may rewrite the file without changing `status` (e.g. on every tool call while
+  `running`). A reader that shows how long a session has had its status must track
+  status changes itself.
 - Files can outlive their pane (crash, terminal restart). Show a file only when its
   pane currently exists in that terminal.
