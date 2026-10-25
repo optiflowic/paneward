@@ -53,7 +53,7 @@ The Rust toolchain is pinned in `rust-toolchain.toml`; [rustup](https://rustup.r
 | `make fmt-check` | Check formatting without writing |
 | `make lint` | Lint with clippy (warnings are errors) |
 | `make deny` | Check advisories, licenses and sources with cargo-deny |
-| `make audit` | Audit the GitHub Actions workflows with zizmor (set `GH_TOKEN` for the online audits) |
+| `make audit` | Audit the GitHub Actions workflows with zizmor (set `GH_TOKEN`, `GITHUB_TOKEN` or `ZIZMOR_GITHUB_TOKEN` for the online audits) |
 | `make run` | Run paneward from source |
 
 ## 📄 License
