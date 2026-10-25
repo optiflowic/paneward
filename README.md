@@ -7,7 +7,7 @@ across your terminal panes, shows which ones are running, waiting for you, or id
 and jumps to the pane you pick.
 
 > [!NOTE]
-> Early development. Nothing is released yet.
+> Early development: expect breaking changes before 1.0.
 
 ## Goals
 
@@ -41,12 +41,54 @@ through a backend.
   `WEZTERM_UNIX_SOCKET`): without it, an old session left by a crash can show up
   again after WezTerm restarts and reuses its pane id. paneward only reads these
   files; it does not install hooks or change agent settings.
-- Rust 1.99 or later to build it.
+- Rust 1.99 or later, only to build from source.
 
-### Install and run
+### Install
+
+Each [release](https://github.com/optiflowic/paneward/releases) from v0.1.1 on has
+an archive per platform, named `paneward-<version>-<target>.tar.gz` (`<version>`
+includes the `v`, e.g. `v0.1.1`):
+
+| Platform                | `<target>` |
+|-------------------------|------------|
+| macOS (Apple silicon)   | `aarch64-apple-darwin` |
+| macOS (Intel)           | `x86_64-apple-darwin` |
+| Linux, WSL (x86_64)     | `x86_64-unknown-linux-musl` |
+| Linux, WSL (arm64)      | `aarch64-unknown-linux-musl` |
+
+The Linux binaries are static, so they run on any distribution. To install the
+latest release with the [GitHub CLI](https://cli.github.com), for example on Apple
+silicon:
 
 ```sh
-cargo install --locked --git https://github.com/optiflowic/paneward
+target=aarch64-apple-darwin
+cd "$(mktemp -d)"
+gh release download --repo optiflowic/paneward --pattern "paneward-*-$target.tar.gz*"
+shasum -a 256 -c paneward-*-"$target".tar.gz.sha256   # Linux: sha256sum -c
+gh attestation verify paneward-*-"$target".tar.gz --repo optiflowic/paneward
+tar -xzf paneward-*-"$target".tar.gz
+mkdir -p ~/.local/bin && mv paneward ~/.local/bin/
+```
+
+`gh attestation verify` checks that the archive was built by this repository's
+release workflow. Rarely, a release has no attestation; the checksum still applies.
+If `paneward` is not found afterwards, add `~/.local/bin` to your
+`PATH`, e.g. with `export PATH="$HOME/.local/bin:$PATH"` in your shell's startup
+file.
+
+The macOS binaries are not notarized. If you download an archive with a browser,
+macOS may refuse to run it; remove the quarantine flag with
+`xattr -d com.apple.quarantine ~/.local/bin/paneward`.
+
+Or build from source (`<version>` as above; v0.1.0 is only available this way):
+
+```sh
+cargo install --locked --git https://github.com/optiflowic/paneward --tag paneward-<version>
+```
+
+### Run
+
+```sh
 paneward
 ```
 

@@ -102,7 +102,9 @@ the memo, fix the memo in the same PR.
   (`.github/workflows/release-please.yaml`) keeps a release PR open, bumping
   `Cargo.toml`, `.release-please-manifest.json` and `CHANGELOG.md`. Never edit
   those version fields or `CHANGELOG.md` by hand. Run `docs/manual-testing.md`
-  before merging the release PR.
+  before merging the release PR. When a release is created, the same workflow
+  builds the binaries and attaches them to it; if a build fails, use "Re-run
+  failed jobs" on that run.
 - The toolchain is pinned in `rust-toolchain.toml`; `rust-version` in `Cargo.toml`
   is the MSRV. `Cargo.lock` is committed.
 - Development tools (`cargo-deny`, `zizmor`) are pinned in `mise.toml`, the single
