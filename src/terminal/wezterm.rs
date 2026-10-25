@@ -59,9 +59,7 @@ impl WezTerm {
             return None;
         }
         let program = program_for(env::var_os(WSL_ENV).as_deref());
-        let instance = env::var(INSTANCE_ENV)
-            .ok()
-            .filter(|socket| !socket.is_empty());
+        let instance = instance_from(env::var(INSTANCE_ENV).ok());
         Some(Self { program, instance })
     }
 
@@ -69,6 +67,11 @@ impl WezTerm {
         let output = run_cli(self.program, &["list", "--format", "json"])?;
         parse_list(&output)
     }
+}
+
+/// An unset or empty `WEZTERM_UNIX_SOCKET` means the instance is unknown.
+fn instance_from(socket: Option<String>) -> Option<String> {
+    socket.filter(|socket| !socket.is_empty())
 }
 
 /// Picks the executable from `WSL_DISTRO_NAME` (see the memo's WSL section).
@@ -257,6 +260,18 @@ mod tests {
         assert_eq!(status, None);
         assert!(started.elapsed() < Duration::from_secs(5));
         assert!(child.try_wait().unwrap().is_some(), "the child was reaped");
+    }
+
+    #[test]
+    fn the_socket_identifies_the_instance() {
+        let socket = "/Users/me/.local/share/wezterm/gui-sock-47726";
+        assert_eq!(instance_from(Some(socket.into())).as_deref(), Some(socket));
+    }
+
+    #[test]
+    fn an_unset_or_empty_socket_leaves_the_instance_unknown() {
+        assert_eq!(instance_from(None), None);
+        assert_eq!(instance_from(Some(String::new())), None);
     }
 
     #[test]
