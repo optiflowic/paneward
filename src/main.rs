@@ -97,6 +97,10 @@ fn handle_events(app: &mut App, events: &Receiver<Event>) -> Result<bool> {
     };
     let mut state_changed = false;
     for event in first.into_iter().chain(events.try_iter()) {
+        // Keys typed after `q` must not jump anywhere on the way out.
+        if app.should_quit() {
+            break;
+        }
         match event {
             Event::Input(InputEvent::Key(key)) if key.kind == KeyEventKind::Press => {
                 app.handle_key(key);
