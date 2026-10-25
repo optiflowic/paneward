@@ -4,7 +4,8 @@ What paneward needs from WezTerm and how it gets it. The backend
 (`src/terminal/wezterm.rs`) follows this memo; if WezTerm behaves differently, fix
 this memo in the same change.
 
-Checked with `wezterm 20260716-195552-76b606ec` on macOS.
+Checked with `wezterm 20260716-195552-76b606ec` on macOS. The WSL section below is
+not checked yet; see `docs/manual-testing.md`.
 
 ## Detection
 
@@ -17,7 +18,8 @@ The state files name this backend `wezterm` (the `terminal` field).
 
 ## Commands
 
-Every command is run as `wezterm cli --no-auto-start <subcommand>`.
+Every command is run as `wezterm cli --no-auto-start <subcommand>` (`wezterm.exe`
+inside WSL, see below).
 `--no-auto-start` keeps `wezterm cli` from starting a mux server when none is
 running; paneward only talks to the running GUI.
 
@@ -63,6 +65,23 @@ wezterm cli --no-auto-start activate-pane --pane-id <pane_id>
 
 `<tab_id>` comes from `list` above. Both exit with status 0 on success and print
 nothing.
+
+## WSL
+
+Not checked yet. This describes the expected setup; fix it once the WSL items in
+`docs/manual-testing.md` have been run.
+
+- **Setup.** The Windows WezTerm runs a WSL distribution as its domain. WezTerm sets
+  `WEZTERM_PANE` on the Windows side only; the user must forward it into WSL with
+  `WSLENV` (e.g. `WSLENV=WEZTERM_PANE/u`), or neither the hook nor paneward sees it.
+- **Executable.** Inside WSL, paneward runs `wezterm.exe` (the Windows binary,
+  through WSL interop) instead of `wezterm`, which is usually not installed there.
+  WSL is detected by `WSL_DISTRO_NAME` being set and non-empty. A Linux WezTerm
+  running inside WSL (WSLg) is not supported by this rule.
+- **Ids.** `wezterm.exe cli list` is expected to report the same `pane_id` as the
+  forwarded `WEZTERM_PANE` (and so as the state files). Unverified.
+- **Startup time.** Interop starts a Windows process for every call, which is slower
+  than on macOS or Linux. The 2-second timeout (see Quirks) also applies here.
 
 ## Quirks
 
