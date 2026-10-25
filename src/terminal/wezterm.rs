@@ -264,7 +264,7 @@ mod tests {
 
     #[test]
     fn the_socket_identifies_the_instance() {
-        let socket = "/Users/me/.local/share/wezterm/gui-sock-47726";
+        let socket = "/home/me/.local/share/wezterm/gui-sock-example";
         assert_eq!(instance_from(Some(socket.into())).as_deref(), Some(socket));
     }
 

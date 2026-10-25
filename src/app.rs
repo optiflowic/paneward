@@ -338,13 +338,17 @@ mod tests {
     #[test]
     fn hides_sessions_from_an_earlier_run_of_the_terminal() {
         let mut old_run = session("1", Status::Idle, 1);
-        old_run.terminal_instance = Some("gui-sock-1".into());
+        old_run.terminal_instance = Some("gui-sock-old-run".into());
         let mut this_run = session("2", Status::Idle, 1);
-        this_run.terminal_instance = Some("gui-sock-2".into());
+        this_run.terminal_instance = Some("gui-sock-this-run".into());
         let sessions = vec![old_run, this_run];
 
-        let kept =
-            sessions_in_live_panes(sessions, "wezterm", Some("gui-sock-2"), &ids(&["1", "2"]));
+        let kept = sessions_in_live_panes(
+            sessions,
+            "wezterm",
+            Some("gui-sock-this-run"),
+            &ids(&["1", "2"]),
+        );
 
         let panes: Vec<&str> = kept.iter().map(|s| s.pane_id.as_str()).collect();
         assert_eq!(panes, ["2"]);
@@ -352,11 +356,17 @@ mod tests {
 
     #[test]
     fn decides_by_pane_alone_when_an_instance_is_unknown() {
-        assert!(is_same_run(None, Some("gui-sock-2")));
-        assert!(is_same_run(Some("gui-sock-1"), None));
+        assert!(is_same_run(None, Some("gui-sock-this-run")));
+        assert!(is_same_run(Some("gui-sock-old-run"), None));
         assert!(is_same_run(None, None));
-        assert!(is_same_run(Some("gui-sock-2"), Some("gui-sock-2")));
-        assert!(!is_same_run(Some("gui-sock-1"), Some("gui-sock-2")));
+        assert!(is_same_run(
+            Some("gui-sock-this-run"),
+            Some("gui-sock-this-run")
+        ));
+        assert!(!is_same_run(
+            Some("gui-sock-old-run"),
+            Some("gui-sock-this-run")
+        ));
     }
 
     #[test]
@@ -398,7 +408,7 @@ mod tests {
         assert_eq!(reselect(&previous, 1, &[]), 0);
     }
 
-    const CURRENT_INSTANCE: &str = "gui-sock-2";
+    const CURRENT_INSTANCE: &str = "gui-sock-this-run";
 
     /// A terminal that reports fixed panes and records what it was asked to focus.
     struct FakeTerminal {
@@ -490,7 +500,7 @@ mod tests {
         let Fixture { mut app, dir, .. } = fixture(&["1"], &["1", "2"]);
         let text = serde_json::json!({
             "version": 1, "agent": "claude", "status": "idle", "terminal": "wezterm",
-            "pane_id": "2", "terminal_instance": "gui-sock-1", "updated_at": 50,
+            "pane_id": "2", "terminal_instance": "gui-sock-old-run", "updated_at": 50,
         });
         fs::write(dir.path().join("wezterm-2.json"), text.to_string()).unwrap();
 

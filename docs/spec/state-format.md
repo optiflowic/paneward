@@ -21,7 +21,7 @@ One file per terminal pane. Example: `~/.local/state/paneward/wezterm-12.json`.
   "status": "running",
   "terminal": "wezterm",
   "pane_id": "12",
-  "terminal_instance": "/home/me/.local/share/wezterm/gui-sock-4242",
+  "terminal_instance": "/home/me/.local/share/wezterm/gui-sock-example",
   "cwd": "/home/me/src/project",
   "session_id": "757d3262-7975-427c-9ef1-7acc74732b57",
   "started_at": 1792858467,

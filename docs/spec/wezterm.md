@@ -20,8 +20,8 @@ The state files name this backend `wezterm` (the `terminal` field).
 
 The state file's `terminal_instance` for WezTerm is the value of
 `WEZTERM_UNIX_SOCKET`, which WezTerm also sets in every pane: the socket of the
-process that owns the panes, e.g. `/Users/me/.local/share/wezterm/gui-sock-47726`.
-The number is that process's pid, so the value changes when WezTerm starts again.
+process that owns the panes, e.g. `$HOME/.local/share/wezterm/gui-sock-<pid>`.
+`<pid>` is that process's id, so the value changes when WezTerm starts again.
 The hook reads it from its environment; paneward reads its own, since it runs in a
 pane of the same WezTerm. Without the variable (empty or unset), the instance is
 unknown.
