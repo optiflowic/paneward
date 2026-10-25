@@ -2,7 +2,10 @@
 
 use std::collections::HashSet;
 use std::env;
-use std::process::Command;
+use std::io::{self, Read};
+use std::process::{Child, Command, ExitStatus, Stdio};
+use std::thread::{self, JoinHandle};
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
 use serde::Deserialize;
@@ -16,6 +19,13 @@ const PROGRAM: &str = "wezterm";
 
 /// Keeps `wezterm cli` from starting a mux server; paneward only talks to the running GUI.
 const NO_AUTO_START: &str = "--no-auto-start";
+
+/// `wezterm cli` can hang (e.g. an inherited `WEZTERM_PANE` over ssh), and paneward
+/// waits for it on the UI thread; past this it is killed and reported as an error.
+const CLI_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// How often to check whether `wezterm cli` has exited.
+const EXIT_POLL_INTERVAL: Duration = Duration::from_millis(5);
 
 pub struct WezTerm;
 
@@ -75,16 +85,63 @@ fn tab_of(panes: &[ListedPane], pane_id: &str) -> Option<u64> {
 fn run_cli(args: &[&str]) -> Result<String> {
     let full_args = [&["cli", NO_AUTO_START], args].concat();
     let command_line = format!("{PROGRAM} {}", full_args.join(" "));
-    let output = Command::new(PROGRAM)
+    let mut child = Command::new(PROGRAM)
         .args(&full_args)
-        .output()
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .with_context(|| format!("failed to run `{command_line}`"))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
+    // Read both pipes while waiting: a child blocked on a full pipe would never exit.
+    let stdout = read_in_background(child.stdout.take());
+    let stderr = read_in_background(child.stderr.take());
+    let status = wait_or_kill(&mut child, CLI_TIMEOUT)
+        .with_context(|| format!("failed to wait for `{command_line}`"))?;
+    let Some(status) = status else {
+        bail!(
+            "`{command_line}` did not finish within {}s",
+            CLI_TIMEOUT.as_secs()
+        );
+    };
+    if !status.success() {
+        let stderr = String::from_utf8_lossy(&collect(stderr)).into_owned();
         bail!("`{command_line}` failed: {}", stderr.trim());
     }
-    String::from_utf8(output.stdout)
+    String::from_utf8(collect(stdout))
         .with_context(|| format!("`{command_line}` printed invalid UTF-8"))
+}
+
+fn read_in_background<R: Read + Send + 'static>(pipe: Option<R>) -> JoinHandle<Vec<u8>> {
+    thread::spawn(move || {
+        let mut bytes = Vec::new();
+        if let Some(mut pipe) = pipe {
+            // On a read error, keep what arrived; the exit status says whether it worked.
+            let _ = pipe.read_to_end(&mut bytes);
+        }
+        bytes
+    })
+}
+
+/// Returns what a reader thread read. The thread only reads into a `Vec`, so it does
+/// not panic; if it somehow did, the output is treated as empty.
+fn collect(reader: JoinHandle<Vec<u8>>) -> Vec<u8> {
+    reader.join().unwrap_or_default()
+}
+
+/// Waits for `child` to exit. Past `timeout` it is killed and `None` is returned.
+fn wait_or_kill(child: &mut Child, timeout: Duration) -> io::Result<Option<ExitStatus>> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        if let Some(status) = child.try_wait()? {
+            return Ok(Some(status));
+        }
+        if Instant::now() >= deadline {
+            child.kill()?;
+            child.wait()?;
+            return Ok(None);
+        }
+        thread::sleep(EXIT_POLL_INTERVAL);
+    }
 }
 
 #[cfg(test)]
@@ -135,6 +192,25 @@ mod tests {
     #[test]
     fn rejects_list_output_that_is_not_json() {
         assert!(parse_list("WINID TABID PANEID").is_err());
+    }
+
+    #[test]
+    fn wait_or_kill_returns_the_status_of_a_quick_command() {
+        let mut child = Command::new("true").spawn().unwrap();
+        let status = wait_or_kill(&mut child, Duration::from_secs(5)).unwrap();
+        assert!(status.is_some_and(|status| status.success()));
+    }
+
+    #[test]
+    fn wait_or_kill_kills_a_command_that_hangs() {
+        let mut child = Command::new("sleep").arg("30").spawn().unwrap();
+        let started = Instant::now();
+
+        let status = wait_or_kill(&mut child, Duration::from_millis(50)).unwrap();
+
+        assert_eq!(status, None);
+        assert!(started.elapsed() < Duration::from_secs(5));
+        assert!(child.try_wait().unwrap().is_some(), "the child was reaped");
     }
 
     #[test]
