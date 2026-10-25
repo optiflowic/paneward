@@ -56,7 +56,8 @@ Pane ids are only unique within one run of a terminal: after a restart they star
 again from the beginning, so a file left behind by a crash can match a new pane.
 `terminal_instance` tells runs apart. It is an opaque string that changes whenever
 the terminal starts again; each backend memo in `docs/spec/` defines its value
-(WezTerm: `WEZTERM_UNIX_SOCKET`). Readers compare it for equality only.
+(WezTerm: `WEZTERM_UNIX_SOCKET`). Readers compare it for equality only, and treat
+an empty string like a missing field.
 
 ## Rules for writers
 
