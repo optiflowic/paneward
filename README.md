@@ -83,8 +83,10 @@ running when paneward starts, counted from their state file's last update).
 
 Sessions needing you come first: `waiting`, then `running`, then `idle`, each by
 project name. The list updates as soon as a state file changes. Sessions whose
-pane is gone (closed pane, terminal restart) are hidden. Outside WezTerm the list
-stays empty, because paneward cannot check which panes exist.
+pane is gone (closed pane, terminal restart) are hidden within a few seconds, the
+next time paneward lists the panes. If listing the panes fails, paneward keeps the
+last list it got and shows the error. Outside WezTerm the list stays empty, because
+paneward cannot check which panes exist.
 
 ## Roadmap
 
