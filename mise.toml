@@ -1,0 +1,6 @@
+# Development tools, installed with `mise install`. CI installs the same versions
+# from this file (jdx/mise-action), so this is the only place to bump them.
+# The Rust toolchain is pinned separately in rust-toolchain.toml (rustup).
+[tools]
+cargo-deny = "0.20.2"
+zizmor = "1.31.1"
