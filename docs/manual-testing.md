@@ -4,8 +4,11 @@ Automated tests cover pure logic (state parsing, sorting, filtering, formatting,
 backend output parsing). Talking to a real terminal and drawing the TUI is not
 testable in CI — run this checklist before tagging a release.
 
-Run it on macOS and on Linux (WSL), inside WezTerm, with at least one agent
-installed and its hook writing state files (see `docs/spec/state-format.md`).
+Run it inside WezTerm, with at least one agent installed and its hook writing state
+files (see `docs/spec/state-format.md`): on macOS, and on Linux (WSL) once the WSL
+section has been run. That section has not been run yet, so the README marks WSL
+support as not tested. Once it passes, remove that note from the README and the
+"Not checked yet" notes from `docs/spec/wezterm.md`.
 
 ## Environment without agents
 
@@ -45,8 +48,9 @@ installed and its hook writing state files (see `docs/spec/state-format.md`).
 
 ## WSL
 
-Run inside a WSL distribution opened by the Windows WezTerm, with `WEZTERM_PANE`
-forwarded through `WSLENV` (see `docs/spec/wezterm.md`, "WSL").
+Not run yet (see above). Run inside a WSL distribution opened by the Windows
+WezTerm, with `WEZTERM_PANE` forwarded through `WSLENV` (see `docs/spec/wezterm.md`,
+"WSL").
 
 - [ ] `echo $WEZTERM_PANE` prints the same id as `wezterm.exe cli list` shows for
       that pane, and the hook's state file uses it.
