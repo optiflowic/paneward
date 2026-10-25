@@ -104,28 +104,36 @@ fn run_cli(args: &[&str]) -> Result<String> {
         );
     };
     if !status.success() {
-        let stderr = String::from_utf8_lossy(&collect(stderr)).into_owned();
-        bail!("`{command_line}` failed: {}", stderr.trim());
+        // stderr only explains the failure; show what could be read of it.
+        let stderr = collect(stderr).unwrap_or_default();
+        bail!(
+            "`{command_line}` failed: {}",
+            String::from_utf8_lossy(&stderr).trim()
+        );
     }
-    String::from_utf8(collect(stdout))
-        .with_context(|| format!("`{command_line}` printed invalid UTF-8"))
+    let stdout =
+        collect(stdout).with_context(|| format!("failed to read output of `{command_line}`"))?;
+    String::from_utf8(stdout).with_context(|| format!("`{command_line}` printed invalid UTF-8"))
 }
 
-fn read_in_background<R: Read + Send + 'static>(pipe: Option<R>) -> JoinHandle<Vec<u8>> {
+fn read_in_background<R: Read + Send + 'static>(
+    pipe: Option<R>,
+) -> JoinHandle<io::Result<Vec<u8>>> {
     thread::spawn(move || {
         let mut bytes = Vec::new();
         if let Some(mut pipe) = pipe {
-            // On a read error, keep what arrived; the exit status says whether it worked.
-            let _ = pipe.read_to_end(&mut bytes);
+            pipe.read_to_end(&mut bytes)?;
         }
-        bytes
+        Ok(bytes)
     })
 }
 
-/// Returns what a reader thread read. The thread only reads into a `Vec`, so it does
-/// not panic; if it somehow did, the output is treated as empty.
-fn collect(reader: JoinHandle<Vec<u8>>) -> Vec<u8> {
-    reader.join().unwrap_or_default()
+/// Returns what a reader thread read.
+fn collect(reader: JoinHandle<io::Result<Vec<u8>>>) -> io::Result<Vec<u8>> {
+    // The thread only reads into a `Vec`; if it panicked anyway, report it as a read error.
+    reader
+        .join()
+        .unwrap_or_else(|_| Err(io::Error::other("output reader panicked")))
 }
 
 /// Waits for `child` to exit. Past `timeout` it is killed and `None` is returned.
