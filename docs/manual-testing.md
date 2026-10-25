@@ -11,11 +11,17 @@ installed and its hook writing state files (see `docs/spec/state-format.md`).
 
 - [ ] With no state directory, `paneward` starts and shows an empty list without errors.
 - [ ] Outside a supported terminal, `paneward` starts and explains that jumping is unavailable.
+- [ ] Inside tmux in WezTerm (where `wezterm cli` may fail or hang), `paneward` shows
+      an error message within a few seconds and `q` still quits.
+- [ ] Starting paneward before the state directory exists, then starting an agent,
+      adds the session within about two seconds.
 
 ## Session list
 
 - [ ] Starting an agent in a new pane adds it to the list within a second.
 - [ ] Status changes (`running` → `waiting` → `idle`) are reflected within a second.
+- [ ] While an agent runs several tools in a row, its `running` time keeps counting
+      instead of restarting at each tool call.
 - [ ] Sessions are ordered `waiting`, `running`, `idle`, then by project name.
 - [ ] Ending the session (agent exits normally) removes it from the list.
 - [ ] Closing the pane without ending the session hides it from the list.
@@ -26,12 +32,16 @@ installed and its hook writing state files (see `docs/spec/state-format.md`).
 - [ ] Selecting a session in the same tab focuses its pane.
 - [ ] Selecting a session in another tab switches to that tab and focuses the pane.
 - [ ] Selecting a session whose pane was just closed shows a message instead of crashing.
+- [ ] Number keys `1`-`9` jump to the session with that number.
+- [ ] paneward stays open after a jump.
 
 ## Layouts
 
 - [ ] Sidebar layout fits a narrow (about 30 columns) split.
 - [ ] Dock layout fits a short (about 8 rows) split.
 - [ ] Resizing the pane redraws without artifacts.
+- [ ] Without `--layout`, making the pane much wider than tall switches to the dock,
+      and back to the sidebar when it is tall again.
 
 ## WSL
 
