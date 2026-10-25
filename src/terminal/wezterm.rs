@@ -73,11 +73,10 @@ fn tab_of(panes: &[ListedPane], pane_id: &str) -> Option<u64> {
 
 /// Runs `wezterm cli <args>` and returns its stdout.
 fn run_cli(args: &[&str]) -> Result<String> {
-    let command_line = format!("{PROGRAM} cli {}", args.join(" "));
+    let full_args = [&["cli", NO_AUTO_START], args].concat();
+    let command_line = format!("{PROGRAM} {}", full_args.join(" "));
     let output = Command::new(PROGRAM)
-        .arg("cli")
-        .arg(NO_AUTO_START)
-        .args(args)
+        .args(&full_args)
         .output()
         .with_context(|| format!("failed to run `{command_line}`"))?;
     if !output.status.success() {
