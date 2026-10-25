@@ -45,8 +45,8 @@ through a backend.
 
 ### Install
 
-Each [release](https://github.com/optiflowic/paneward/releases) has an archive per
-platform, named `paneward-<version>-<target>.tar.gz` (`<version>` includes the `v`,
+Each [release](https://github.com/optiflowic/paneward/releases) from v0.1.1 on has
+an archive per platform, named `paneward-<version>-<target>.tar.gz` (`<version>` includes the `v`,
 e.g. `v0.1.0`):
 
 | Platform                | `<target>` |
@@ -70,16 +70,15 @@ tar -xzf paneward-*-"$target".tar.gz
 mkdir -p ~/.local/bin && mv paneward ~/.local/bin/
 ```
 
-`gh attestation verify` checks the build provenance, which every release after
-v0.1.0 has; skip it for v0.1.0, whose binaries were attached later without one. If
-`paneward` is not found afterwards, add `~/.local/bin` to your `PATH`, e.g. with
+`gh attestation verify` checks that the archive was built by this repository's
+release workflow. If `paneward` is not found afterwards, add `~/.local/bin` to your `PATH`, e.g. with
 `export PATH="$HOME/.local/bin:$PATH"` in your shell's startup file.
 
 The macOS binaries are not notarized. If you download an archive with a browser,
 macOS may refuse to run it; remove the quarantine flag with
 `xattr -d com.apple.quarantine ~/.local/bin/paneward`.
 
-Or build from source (`<version>` as above):
+Or build from source (`<version>` as above; v0.1.0 is only available this way):
 
 ```sh
 cargo install --locked --git https://github.com/optiflowic/paneward --tag paneward-<version>
