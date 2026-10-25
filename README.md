@@ -24,6 +24,63 @@ through a backend.
 - Orchestrating agents: sending prompts, collecting results, managing their work.
 - Replacing your terminal or multiplexer.
 
+## Usage
+
+### Requirements
+
+- [WezTerm](https://wezterm.org). paneward lists its panes and focuses them with
+  `wezterm cli`. Other terminals are planned.
+- A hook for each agent that records its sessions as state files under
+  `${XDG_STATE_HOME:-~/.local/state}/paneward/`, in the
+  [state file format](docs/spec/state-format.md). paneward only reads these files;
+  it does not install hooks or change agent settings.
+
+### Install and run
+
+```sh
+cargo install --locked --git https://github.com/optiflowic/paneward
+paneward
+```
+
+Run it in a WezTerm split next to your agents. paneward stays open, so a narrow
+split on the side (sidebar) or a short one at the bottom (dock) works well.
+
+```text
+paneward [--layout auto|sidebar|dock]
+```
+
+| Layout    | Shape |
+|-----------|-------|
+| `auto`    | Default. Dock when the pane is more than twice as wide as tall (in cells), sidebar otherwise. Follows resizes. |
+| `sidebar` | Two lines per session, for a narrow, tall split. |
+| `dock`    | One line per session, for a wide, short split. |
+
+### Keys
+
+| Key                     | Action |
+|-------------------------|--------|
+| `j` / `k`, `↓` / `↑`    | Move the selection |
+| `Enter`                 | Jump to the selected session's pane (switching tabs if needed) |
+| `1`-`9`                 | Jump to the session with that number |
+| `q`, `Esc`, `Ctrl-C`    | Quit |
+
+### What the list shows
+
+Each session shows its number, status, project (the last part of its working
+directory), agent, and how long it has had its current status (for sessions already
+running when paneward starts, counted from their state file's last update).
+
+| Icon | Status    | Meaning |
+|------|-----------|---------|
+| `●`  | `waiting` | The agent is waiting for you, e.g. on a permission prompt. |
+| `◐`  | `running` | The agent is working. |
+| `○`  | `idle`    | The agent finished its turn. |
+
+Sessions needing you come first: `waiting`, then `running`, then `idle`, each by
+project name. The list updates as soon as a state file changes. Sessions whose
+pane is gone (closed pane, terminal restart) are hidden. Outside WezTerm the list
+stays empty, because paneward cannot check which panes exist.
+
 ## Roadmap
 
 | Version | Scope |
