@@ -31,9 +31,12 @@ through a backend.
 - [WezTerm](https://wezterm.org). paneward lists its panes and focuses them with
   `wezterm cli`. Other terminals are planned.
 - A hook for each agent that records its sessions as state files under
-  `${XDG_STATE_HOME:-~/.local/state}/paneward/`, in the
-  [state file format](docs/spec/state-format.md). paneward only reads these files;
-  it does not install hooks or change agent settings.
+  `${XDG_STATE_HOME:-$HOME/.local/state}/paneward/`, in the
+  [state file format](docs/spec/state-format.md). No hook ships with paneward yet:
+  write one against that spec (Claude Code, for example, can run a command on its
+  hook events). paneward only reads these files; it does not install hooks or
+  change agent settings.
+- Rust 1.99 or later to build it.
 
 ### Install and run
 
@@ -66,8 +69,8 @@ paneward [--layout auto|sidebar|dock]
 
 ### What the list shows
 
-Each session shows its number, status, project (the last part of its working
-directory), agent, and how long it has had its current status (for sessions already
+Each session shows its number (1-9, for the number keys), status, project (the last
+part of its working directory, or `pane <id>` without one), agent, and how long it has had its current status (for sessions already
 running when paneward starts, counted from their state file's last update).
 
 | Icon | Status    | Meaning |
