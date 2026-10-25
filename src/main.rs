@@ -74,26 +74,39 @@ fn run(
     while !app.should_quit() {
         tui.draw(|frame| ui::draw(frame, app, layout, unix_now()))
             .context("failed to draw")?;
-        match events.recv_timeout(REDRAW_INTERVAL) {
-            Ok(Event::Input(InputEvent::Key(key))) if key.kind == KeyEventKind::Press => {
-                app.handle_key(key);
-            }
-            Ok(Event::Input(_)) | Err(RecvTimeoutError::Timeout) => {}
-            Ok(Event::InputFailed(err)) => return Err(err).context("failed to read input"),
-            Ok(Event::StateChanged) => {
-                drain_state_changes(&events);
-                app.refresh();
-                last_refresh = Instant::now();
-            }
-            Err(RecvTimeoutError::Disconnected) => bail!("event sources stopped"),
-        }
-        if last_refresh.elapsed() >= REFRESH_INTERVAL {
+        let state_changed = handle_events(app, &events)?;
+        if state_changed || last_refresh.elapsed() >= REFRESH_INTERVAL {
             watcher.watch_if_needed();
             app.refresh();
             last_refresh = Instant::now();
         }
     }
     Ok(())
+}
+
+/// Waits up to [`REDRAW_INTERVAL`] for an event, then handles it and every event
+/// already queued behind it. Returns whether any state file changed.
+///
+/// One write shows up as several file events (create, modify, rename); handling the
+/// whole queue at once turns them into a single reload.
+fn handle_events(app: &mut App, events: &Receiver<Event>) -> Result<bool> {
+    let first = match events.recv_timeout(REDRAW_INTERVAL) {
+        Ok(event) => Some(event),
+        Err(RecvTimeoutError::Timeout) => None,
+        Err(RecvTimeoutError::Disconnected) => bail!("event sources stopped"),
+    };
+    let mut state_changed = false;
+    for event in first.into_iter().chain(events.try_iter()) {
+        match event {
+            Event::Input(InputEvent::Key(key)) if key.kind == KeyEventKind::Press => {
+                app.handle_key(key);
+            }
+            Event::Input(_) => {}
+            Event::InputFailed(err) => return Err(err).context("failed to read input"),
+            Event::StateChanged => state_changed = true,
+        }
+    }
+    Ok(state_changed)
 }
 
 /// Reads terminal input on its own thread, since `event::read` blocks.
@@ -111,11 +124,6 @@ fn spawn_input_reader(sender: Sender<Event>) {
             }
         }
     });
-}
-
-/// One write shows up as several file events (create, modify, rename); reload once.
-fn drain_state_changes(events: &Receiver<Event>) {
-    while let Ok(Event::StateChanged) = events.try_recv() {}
 }
 
 /// Watches the state directory and reports changes as [`Event::StateChanged`].
