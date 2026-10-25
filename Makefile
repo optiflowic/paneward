@@ -26,7 +26,7 @@ deny:
 	cargo deny check
 
 # Online audits (e.g. pinned commits vs. tags) run only when GH_TOKEN is set:
-#   GH_TOKEN=$$(gh auth token) make audit
+#   GH_TOKEN=$(gh auth token) make audit
 audit:
 	zizmor --persona=pedantic .
 
