@@ -110,6 +110,8 @@ fn split_for_message(area: Rect, message: Option<&str>) -> (Rect, Option<Rect>) 
     (list, Some(message))
 }
 
+/// Estimates the rows a message needs. Word wrapping can need a little more; the
+/// last words are cut off then, which is fine for a status line.
 fn message_height(message: &str, width: u16) -> u16 {
     let width = usize::from(width.max(1));
     let lines: usize = message
