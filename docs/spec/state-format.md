@@ -59,7 +59,8 @@ One file per terminal pane. Example: `~/.local/state/paneward/wezterm-12.json`.
 ## Rules for readers
 
 - A missing directory means no sessions, not an error.
-- Read only files whose name ends in `.json`; anything else is a writer's temporary file.
+- Read only regular files whose name ends in `.json`. Other names are a writer's
+  temporary files; symlinks, directories and FIFOs are never state files.
 - Skip files that fail to parse, have an unknown `version`, or an unknown `status`.
 - Ignore unknown fields (new optional fields are not a version bump).
 - Files can outlive their pane (crash, terminal restart). Show a file only when its
