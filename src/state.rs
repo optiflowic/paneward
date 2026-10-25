@@ -90,6 +90,9 @@ pub fn load_sessions(dir: &Path) -> Result<Vec<Session>> {
     };
     let mut sessions: Vec<Session> = entries
         .filter_map(Result::ok)
+        // Writers rename regular files into place. Anything else is skipped without
+        // opening it: opening a FIFO with no writer would block forever.
+        .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_file()))
         .map(|entry| entry.path())
         .filter(|path| is_state_file(path))
         .filter_map(|path| read_session(&path))
@@ -297,6 +300,17 @@ mod tests {
 
         let panes: Vec<&str> = sessions.iter().map(|s| s.pane_id.as_str()).collect();
         assert_eq!(panes, ["1"]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn skips_symlinks_to_state_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("elsewhere");
+        fs::write(&target, state_json("idle", "1", "/src/a")).unwrap();
+        std::os::unix::fs::symlink(&target, dir.path().join("wezterm-1.json")).unwrap();
+
+        assert_eq!(load_sessions(dir.path()).unwrap(), []);
     }
 
     #[test]
