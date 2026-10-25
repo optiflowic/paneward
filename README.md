@@ -30,6 +30,8 @@ through a backend.
 
 - [WezTerm](https://wezterm.org). paneward lists its panes and focuses them with
   `wezterm cli`. Other terminals are planned.
+  On Windows, run paneward inside WSL and forward the pane id from WezTerm with
+  `WSLENV=WEZTERM_PANE/u`; paneward then uses `wezterm.exe`.
 - A hook for each agent that records its sessions as state files under
   `${XDG_STATE_HOME:-$HOME/.local/state}/paneward/`, in the
   [state file format](docs/spec/state-format.md). No hook ships with paneward yet:
