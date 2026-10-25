@@ -7,7 +7,7 @@ across your terminal panes, shows which ones are running, waiting for you, or id
 and jumps to the pane you pick.
 
 > [!NOTE]
-> Early development. Nothing is released yet.
+> Early development: expect breaking changes before 1.0.
 
 ## Goals
 
@@ -41,12 +41,45 @@ through a backend.
   `WEZTERM_UNIX_SOCKET`): without it, an old session left by a crash can show up
   again after WezTerm restarts and reuses its pane id. paneward only reads these
   files; it does not install hooks or change agent settings.
-- Rust 1.99 or later to build it.
+- Rust 1.99 or later, only to build from source.
 
-### Install and run
+### Install
+
+Download the archive for your platform from the
+[latest release](https://github.com/optiflowic/paneward/releases/latest) and put
+`paneward` on your `PATH`.
+
+| Platform                | Archive |
+|-------------------------|---------|
+| macOS (Apple silicon)   | `paneward-<version>-aarch64-apple-darwin.tar.gz` |
+| macOS (Intel)           | `paneward-<version>-x86_64-apple-darwin.tar.gz` |
+| Linux, WSL (x86_64)     | `paneward-<version>-x86_64-unknown-linux-musl.tar.gz` |
+| Linux, WSL (arm64)      | `paneward-<version>-aarch64-unknown-linux-musl.tar.gz` |
+
+The Linux binaries are static, so they run on any distribution. For example, on
+Apple silicon:
 
 ```sh
-cargo install --locked --git https://github.com/optiflowic/paneward
+tar -xzf paneward-v0.1.0-aarch64-apple-darwin.tar.gz
+mv paneward ~/.local/bin/
+```
+
+Each archive comes with a `.sha256` checksum and a build provenance attestation:
+
+```sh
+shasum -a 256 -c paneward-v0.1.0-aarch64-apple-darwin.tar.gz.sha256
+gh attestation verify paneward-v0.1.0-aarch64-apple-darwin.tar.gz --repo optiflowic/paneward
+```
+
+Or build from source:
+
+```sh
+cargo install --locked --git https://github.com/optiflowic/paneward --tag paneward-v0.1.0
+```
+
+### Run
+
+```sh
 paneward
 ```
 
