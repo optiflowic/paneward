@@ -138,14 +138,14 @@ fn draw_sidebar(frame: &mut Frame, app: &App, area: Rect, now: u64) {
 }
 
 /// `1 ● project` over `    agent  status  2m`.
-fn sidebar_item(index: usize, listed: &ListedSession, now: u64) -> ListItem<'static> {
+fn sidebar_item(index: usize, listed: &ListedSession, now: u64) -> ListItem<'_> {
     let session = &listed.session;
     let title = Line::from(vec![
         jump_number(index),
         Span::raw(" "),
         status_icon(session.status),
         Span::raw(" "),
-        Span::raw(session.project.clone()).bold(),
+        Span::raw(session.project.as_str()).bold(),
     ]);
     let details = Line::from(format!(
         "    {}  {}  {}",
@@ -187,7 +187,7 @@ fn widest<'a>(texts: impl Iterator<Item = &'a str>) -> u16 {
 }
 
 /// `1 ● waiting  project  agent  2m`.
-fn dock_row(index: usize, listed: &ListedSession, now: u64) -> Row<'static> {
+fn dock_row(index: usize, listed: &ListedSession, now: u64) -> Row<'_> {
     let session = &listed.session;
     Row::new(vec![
         Line::from(vec![
@@ -196,8 +196,8 @@ fn dock_row(index: usize, listed: &ListedSession, now: u64) -> Row<'static> {
             status_icon(session.status),
         ]),
         Line::from(status_label(session.status)),
-        Line::from(session.project.clone()).bold(),
-        Line::from(session.agent.clone()).dim(),
+        Line::from(session.project.as_str()).bold(),
+        Line::from(session.agent.as_str()).dim(),
         Line::from(format_elapsed(now.saturating_sub(listed.status_since))).dim(),
     ])
 }
