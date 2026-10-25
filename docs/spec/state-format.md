@@ -51,6 +51,7 @@ One file per terminal pane. Example: `~/.local/state/paneward/wezterm-12.json`.
 ## Rules for writers
 
 - Write atomically: write to a temporary file in the same directory, then rename.
+  The temporary file name must not end in `.json` (e.g. `wezterm-12.json.<pid>`).
 - Delete the file when the session ends.
 - Never block or fail the agent. If anything goes wrong, exit successfully without writing.
 - Do nothing when the terminal cannot be identified (e.g. not running inside WezTerm).
@@ -58,6 +59,8 @@ One file per terminal pane. Example: `~/.local/state/paneward/wezterm-12.json`.
 ## Rules for readers
 
 - A missing directory means no sessions, not an error.
+- Read only regular files whose name ends in `.json`. Other names are a writer's
+  temporary files; symlinks, directories and FIFOs are never state files.
 - Skip files that fail to parse, have an unknown `version`, or an unknown `status`.
 - Ignore unknown fields (new optional fields are not a version bump).
 - Files can outlive their pane (crash, terminal restart). Show a file only when its
