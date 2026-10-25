@@ -104,8 +104,8 @@ Not checked yet. This describes the expected setup; fix it once the WSL items in
 - **Tab switching.** Whether `activate-pane` alone switches to the pane's tab could
   not be confirmed from the CLI: `wezterm cli list-clients` keeps reporting the old
   `focused_pane_id` after either command. paneward therefore always activates the
-  tab first. Whether this reaches panes in other tabs is still to be checked by
-  hand (`docs/manual-testing.md`, "Jump").
+  tab first. Checked by hand on macOS: jumping to a session in another tab switches
+  to that tab and focuses the pane (`docs/manual-testing.md`, "Jump").
 - **Missing pane or tab.** An unknown id exits with status 1 and logs to stderr,
   e.g. `ERROR wezterm > unexpected response ... "Error: pane 99999 not found"` or
   `could not determine which pane should be active for tab 99999`. paneward shows
