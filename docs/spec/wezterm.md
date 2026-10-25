@@ -64,7 +64,7 @@ Excerpt:
     "cwd": "file://host/Users/me/src/paneward",
     "is_active": true,
     "is_zoomed": false,
-    "tty_name": "/dev/ttys016"
+    "tty_name": "/dev/tty-example"
   }
 ]
 ```

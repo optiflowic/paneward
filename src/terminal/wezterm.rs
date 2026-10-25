@@ -205,13 +205,13 @@ mod tests {
         "title": "zsh", "cwd": "file://host/Users/me/src/a",
         "cursor_x": 2, "cursor_y": 27, "cursor_shape": "Default", "cursor_visibility": "Visible",
         "left_col": 103, "top_row": 0, "tab_title": "", "window_title": "zsh",
-        "is_active": true, "is_zoomed": false, "tty_name": "/dev/ttys001"
+        "is_active": true, "is_zoomed": false, "tty_name": "/dev/tty-example-1"
       },
       {
         "window_id": 0, "tab_id": 5, "pane_id": 16, "workspace": "default",
         "size": {"rows": 62, "cols": 102, "pixel_width": 1428, "pixel_height": 1736, "dpi": 144},
         "title": "nvim", "cwd": "file://host/Users/me/src/b",
-        "is_active": false, "is_zoomed": false, "tty_name": "/dev/ttys016"
+        "is_active": false, "is_zoomed": false, "tty_name": "/dev/tty-example-2"
       }
     ]"#;
 
