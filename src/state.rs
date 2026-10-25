@@ -127,7 +127,10 @@ fn parse_session(text: &str) -> Option<Session> {
         status: file.status,
         terminal: file.terminal,
         pane_id: file.pane_id,
-        terminal_instance: file.terminal_instance,
+        // An empty value says nothing about the instance (the spec treats it as missing).
+        terminal_instance: file
+            .terminal_instance
+            .filter(|instance| !instance.is_empty()),
         project,
         updated_at: file.updated_at,
     })
@@ -219,6 +222,12 @@ mod tests {
         assert_eq!(session.agent, "codex");
         assert_eq!(session.terminal_instance, None);
         assert_eq!(session.project, "pane %3");
+    }
+
+    #[test]
+    fn treats_an_empty_terminal_instance_as_unknown() {
+        let text = VALID.replace("/run/wezterm/gui-sock-4242", "");
+        assert_eq!(parse_session(&text).unwrap().terminal_instance, None);
     }
 
     #[test]
