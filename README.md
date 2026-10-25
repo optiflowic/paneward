@@ -45,36 +45,39 @@ through a backend.
 
 ### Install
 
-Download the archive for your platform from the
-[latest release](https://github.com/optiflowic/paneward/releases/latest) and put
-`paneward` on your `PATH`.
+Each [release](https://github.com/optiflowic/paneward/releases) has an archive per
+platform, named `paneward-<version>-<target>.tar.gz` (`<version>` includes the `v`,
+e.g. `v0.1.0`):
 
-| Platform                | Archive |
-|-------------------------|---------|
-| macOS (Apple silicon)   | `paneward-<version>-aarch64-apple-darwin.tar.gz` |
-| macOS (Intel)           | `paneward-<version>-x86_64-apple-darwin.tar.gz` |
-| Linux, WSL (x86_64)     | `paneward-<version>-x86_64-unknown-linux-musl.tar.gz` |
-| Linux, WSL (arm64)      | `paneward-<version>-aarch64-unknown-linux-musl.tar.gz` |
+| Platform                | `<target>` |
+|-------------------------|------------|
+| macOS (Apple silicon)   | `aarch64-apple-darwin` |
+| macOS (Intel)           | `x86_64-apple-darwin` |
+| Linux, WSL (x86_64)     | `x86_64-unknown-linux-musl` |
+| Linux, WSL (arm64)      | `aarch64-unknown-linux-musl` |
 
-The Linux binaries are static, so they run on any distribution. For example, on
-Apple silicon:
+The Linux binaries are static, so they run on any distribution. To install the
+latest release with the [GitHub CLI](https://cli.github.com), for example on Apple
+silicon:
 
 ```sh
-tar -xzf paneward-v0.1.0-aarch64-apple-darwin.tar.gz
-mv paneward ~/.local/bin/
+target=aarch64-apple-darwin
+cd "$(mktemp -d)"
+gh release download --repo optiflowic/paneward --pattern "paneward-*-$target.tar.gz*"
+shasum -a 256 -c paneward-*-"$target".tar.gz.sha256   # Linux: sha256sum -c
+gh attestation verify paneward-*-"$target".tar.gz --repo optiflowic/paneward
+tar -xzf paneward-*-"$target".tar.gz
+mkdir -p ~/.local/bin && mv paneward ~/.local/bin/
 ```
 
-Each archive comes with a `.sha256` checksum and a build provenance attestation:
+The macOS binaries are not notarized. If you download an archive with a browser,
+macOS may refuse to run it; remove the quarantine flag with
+`xattr -d com.apple.quarantine ~/.local/bin/paneward`.
+
+Or build from source (`<version>` as above):
 
 ```sh
-shasum -a 256 -c paneward-v0.1.0-aarch64-apple-darwin.tar.gz.sha256
-gh attestation verify paneward-v0.1.0-aarch64-apple-darwin.tar.gz --repo optiflowic/paneward
-```
-
-Or build from source:
-
-```sh
-cargo install --locked --git https://github.com/optiflowic/paneward --tag paneward-v0.1.0
+cargo install --locked --git https://github.com/optiflowic/paneward --tag paneward-<version>
 ```
 
 ### Run
