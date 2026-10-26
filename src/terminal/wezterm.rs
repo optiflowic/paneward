@@ -4,6 +4,7 @@ use std::collections::HashSet;
 use std::env;
 use std::ffi::OsStr;
 use std::io::{self, Read};
+use std::path::Path;
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
@@ -22,6 +23,12 @@ const INSTANCE_ENV: &str = "WEZTERM_UNIX_SOCKET";
 
 /// Set by WSL in every process of a distribution.
 const WSL_ENV: &str = "WSL_DISTRO_NAME";
+
+/// The user's shell, which runs launched commands (see the memo's "Spawn a tab").
+const SHELL_ENV: &str = "SHELL";
+const FALLBACK_SHELL: &str = "/bin/sh";
+/// Login and interactive, so the files that set `PATH` are read.
+const SHELL_FLAGS: &str = "-lic";
 
 const PROGRAM: &str = "wezterm";
 
@@ -43,6 +50,7 @@ pub struct WezTerm {
     /// The `wezterm` executable to run.
     program: &'static str,
     instance: Option<String>,
+    shell: String,
 }
 
 /// One entry of `wezterm cli list --format json`. Other fields are ignored.
@@ -60,7 +68,12 @@ impl WezTerm {
         }
         let program = program_for(env::var_os(WSL_ENV).as_deref());
         let instance = instance_from(env::var(INSTANCE_ENV).ok());
-        Some(Self { program, instance })
+        let shell = shell_from(env::var(SHELL_ENV).ok());
+        Some(Self {
+            program,
+            instance,
+            shell,
+        })
     }
 
     fn list_panes(&self) -> Result<Vec<ListedPane>> {
@@ -72,6 +85,12 @@ impl WezTerm {
 /// An unset or empty `WEZTERM_UNIX_SOCKET` means the instance is unknown.
 fn instance_from(socket: Option<String>) -> Option<String> {
     socket.filter(|socket| !socket.is_empty())
+}
+
+fn shell_from(shell: Option<String>) -> String {
+    shell
+        .filter(|shell| !shell.is_empty())
+        .unwrap_or_else(|| FALLBACK_SHELL.to_string())
 }
 
 /// Picks the executable from `WSL_DISTRO_NAME` (see the memo's WSL section).
@@ -108,6 +127,18 @@ impl Terminal for WezTerm {
         run_cli(self.program, &["activate-pane", "--pane-id", pane_id])?;
         Ok(())
     }
+
+    fn spawn_tab(&self, cwd: &Path, command: &str) -> Result<()> {
+        let cwd = cwd
+            .to_str()
+            .with_context(|| format!("{} is not valid UTF-8", cwd.display()))?;
+        run_cli(self.program, &spawn_args(cwd, &self.shell, command))?;
+        Ok(())
+    }
+}
+
+fn spawn_args<'a>(cwd: &'a str, shell: &'a str, command: &'a str) -> [&'a str; 7] {
+    ["spawn", "--cwd", cwd, "--", shell, SHELL_FLAGS, command]
 }
 
 fn parse_list(json: &str) -> Result<Vec<ListedPane>> {
@@ -283,6 +314,29 @@ mod tests {
     fn uses_wezterm_outside_wsl() {
         assert_eq!(program_for(None), "wezterm");
         assert_eq!(program_for(Some(OsStr::new(""))), "wezterm");
+    }
+
+    #[test]
+    fn uses_the_users_shell_or_falls_back_to_sh() {
+        assert_eq!(shell_from(Some("/bin/zsh".into())), "/bin/zsh");
+        assert_eq!(shell_from(Some(String::new())), "/bin/sh");
+        assert_eq!(shell_from(None), "/bin/sh");
+    }
+
+    #[test]
+    fn spawns_the_command_through_a_login_shell_in_the_project() {
+        assert_eq!(
+            spawn_args("/src/project", "/bin/zsh", "claude --verbose"),
+            [
+                "spawn",
+                "--cwd",
+                "/src/project",
+                "--",
+                "/bin/zsh",
+                "-lic",
+                "claude --verbose"
+            ]
+        );
     }
 
     #[test]
