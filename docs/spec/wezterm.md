@@ -79,6 +79,25 @@ wezterm cli --no-auto-start activate-pane --pane-id <pane_id>
 `<tab_id>` comes from `list` above. Both exit with status 0 on success and print
 nothing.
 
+### Spawn a tab
+
+```sh
+wezterm cli --no-auto-start spawn --cwd <dir> -- <shell> -lic <command>
+```
+
+Opens a new tab in the window of the current pane (`WEZTERM_PANE`), in the same
+domain, and prints the new pane's id. paneward does not use the id.
+
+The program runs in the environment of the WezTerm GUI, not of the `wezterm cli`
+caller. A GUI started from the macOS Dock has a minimal `PATH`, so the command is
+run through the user's login shell: `<shell>` is paneward's `SHELL`, or `/bin/sh`
+when it is unset or empty. `-lic` makes it a login, interactive shell, so both
+login files and rc files (where `PATH` is often set, e.g. `~/.zshrc`) are read.
+When `<command>` exits, the shell exits and WezTerm closes the tab.
+
+Not checked: inside WSL the tab is expected to open in the WSL domain of the
+current pane, with `<dir>` a Linux path.
+
 ## WSL
 
 Not checked yet. This describes the expected setup; fix it once the WSL items in
