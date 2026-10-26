@@ -40,6 +40,27 @@ support as not tested. Once it passes, remove that note from the README and the
 - [ ] Number keys `1`-`9` jump to the session with that number.
 - [ ] paneward stays open after a jump.
 
+## Launch
+
+Run with a config file listing at least two roots and one agent (see the README,
+"Launch").
+
+- [ ] Without the config file, `n` explains where to create it and paneward keeps running.
+- [ ] With a broken config file (e.g. `roots = [`), `n` shows the error and paneward
+      keeps running.
+- [ ] `n` lists the projects under every root, sorted by name, without hidden directories.
+- [ ] Typing filters the list (ignoring case), `Backspace` widens it again, and the
+      cursor sits after the query.
+- [ ] Letters such as `q`, `j` and `n` type into the query instead of quitting or moving.
+- [ ] `Enter` opens a new tab in the same window, in the project's directory, running
+      the agent, and switches to that tab.
+- [ ] The agent finds commands on the usual `PATH`, also when WezTerm was started from
+      the Dock (macOS).
+- [ ] With two agents configured, the agent picker follows the project picker.
+- [ ] `Esc` goes back to the session list; `Ctrl-C` quits.
+- [ ] The launched session shows up in the list once its hook writes a state file.
+- [ ] Exiting the agent closes its tab.
+
 ## Layouts
 
 - [ ] Sidebar layout fits a narrow (about 30 columns) split.

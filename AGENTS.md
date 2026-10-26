@@ -20,7 +20,7 @@ see their status, jump to them, and (later) launch them.
 
 ## Architecture
 
-Dependency direction is strictly one-way: `ui → app → {state, terminal}`.
+Dependency direction is strictly one-way: `ui → app → {state, config, projects, terminal}`.
 Lower layers never `use` upper layers.
 
 ```
@@ -32,9 +32,11 @@ src/
                 -- Reads app state only; never runs commands or touches files.
   state.rs      -- state file reading and parsing (docs/spec/state-format.md).
                 -- Pure, unit-testable; knows NOTHING about terminals.
+  config.rs     -- the user's config file (launch roots and agent commands).
+  projects.rs   -- projects to launch in: directories under the configured roots.
   terminal/     -- terminal backends behind the `Terminal` trait
     mod.rs      -- trait + backend detection
-    wezterm.rs  -- `wezterm cli` (list panes, focus a pane)
+    wezterm.rs  -- `wezterm cli` (list panes, focus a pane, spawn a tab)
 ```
 
 ## Coding Standards
