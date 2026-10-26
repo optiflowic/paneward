@@ -79,6 +79,8 @@ WezTerm, with `WEZTERM_PANE` forwarded through `WSLENV` (see `docs/spec/wezterm.
       that pane, and the hook's state file uses it.
 - [ ] paneward lists the sessions running in WSL panes (`wezterm.exe` is found).
 - [ ] Jumping focuses a pane in the same tab and in another tab.
+- [ ] Launching (`n`, then `Enter`) opens a tab in the WSL domain, in the project's
+      Linux directory, running the agent.
 - [ ] The list stays responsive (no repeated timeout messages) with several panes open.
 - [ ] Without the `WSLENV` forwarding, paneward starts without errors and explains
       that jumping is unavailable.

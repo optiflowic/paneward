@@ -13,7 +13,8 @@ pub struct Project {
 
 /// Lists the projects under `roots`, sorted by name.
 ///
-/// A root that is missing or unreadable has no projects. Hidden directories are skipped.
+/// A root that is missing or unreadable has no projects. Hidden directories and names
+/// that are not UTF-8 are skipped.
 pub fn list(roots: &[PathBuf]) -> Vec<Project> {
     let mut projects: Vec<Project> = roots.iter().flat_map(|root| list_root(root)).collect();
     projects.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.path.cmp(&b.path)));
