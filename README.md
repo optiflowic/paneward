@@ -13,7 +13,7 @@ and jumps to the pane you pick.
 
 - **See** every agent session and its status at a glance.
 - **Jump** to the pane of the session you pick.
-- **Launch** a new agent session in a new pane for a project you pick (planned).
+- **Launch** a new agent session in a new tab for a project you pick.
 
 Agent-agnostic and terminal-agnostic by design: agents plug in through hooks that
 write a [shared state file format](docs/spec/state-format.md), and terminals plug in
@@ -112,6 +112,7 @@ paneward [--layout auto|sidebar|dock]
 | `j` / `k`, `↓` / `↑`    | Move the selection |
 | `Enter`                 | Jump to the selected session's pane (switching tabs if needed) |
 | `1`-`9`                 | Jump to the session with that number |
+| `n`                     | Launch a new session (see [Launch](#launch)) |
 | `q`, `Esc`, `Ctrl-C`    | Quit |
 
 ### What the list shows
@@ -136,6 +137,29 @@ paneward shows the error and keeps using the last pane list it got: state file
 changes still show up, but panes opened or closed since then are not noticed.
 Without `WEZTERM_PANE` (outside WezTerm, or in WSL without the `WSLENV` forwarding)
 the list stays empty, because paneward cannot check which panes exist.
+
+### Launch
+
+`n` opens a picker of your projects. Type to filter them, pick one with `↑` / `↓`
+and `Enter`, and paneward opens a new WezTerm tab in that project running the agent.
+With more than one agent configured, you pick the agent next. `Esc` goes back to the
+list. When the agent exits, its tab closes.
+
+Projects and agents come from `${XDG_CONFIG_HOME:-$HOME/.config}/paneward/config.toml`:
+
+```toml
+# Projects are the directories directly under these roots (hidden ones are skipped).
+roots = ["~/src"]
+
+# Agent name = command line to start it.
+[agents]
+claude = "claude"
+codex = "codex"
+```
+
+The command runs through your login shell (`$SHELL -lic '<command>'`), so it finds
+the same `PATH` as your usual shell. Without the config file, `n` only says where to
+create it.
 
 ## Roadmap
 

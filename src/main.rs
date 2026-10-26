@@ -1,4 +1,6 @@
 mod app;
+mod config;
+mod projects;
 mod state;
 mod terminal;
 mod ui;
@@ -43,7 +45,7 @@ enum Event {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let state_dir = state::state_dir();
-    let mut app = App::new(state_dir.clone(), terminal::detect());
+    let mut app = App::new(state_dir.clone(), config::config_path(), terminal::detect());
     app.refresh();
 
     let mut tui = match ratatui::try_init() {

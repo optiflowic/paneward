@@ -2,11 +2,14 @@
 //! Knows nothing about drawing.
 
 use std::collections::HashSet;
+use std::mem;
 use std::path::PathBuf;
 
 use anyhow::Result;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
+use crate::config::{self, Agent, Config};
+use crate::projects::{self, Project};
 use crate::state::{self, Session};
 use crate::terminal::Terminal;
 
@@ -28,7 +31,10 @@ pub struct ListedSession {
     pub status_since: u64,
 }
 
-/// What a key asks for.
+const NO_CONFIG_PATH_MESSAGE: &str =
+    "Cannot launch: neither XDG_CONFIG_HOME nor HOME is set to find the config file.";
+
+/// What a key asks for on the session list.
 #[derive(Debug, PartialEq, Eq)]
 enum Action {
     SelectPrevious,
@@ -36,31 +42,155 @@ enum Action {
     JumpToSelected,
     /// Jump to the session at this index on screen.
     JumpTo(usize),
+    Launch,
     Quit,
+}
+
+/// What a key asks for in a picker.
+#[derive(Debug, PartialEq, Eq)]
+enum PickerAction {
+    Edit(Edit),
+    Choose,
+    Back,
+    Quit,
+}
+
+/// A change to a picker's query or selection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Edit {
+    Type(char),
+    Erase,
+    SelectPrevious,
+    SelectNext,
+}
+
+/// What the screen shows.
+enum Screen {
+    Sessions,
+    PickProject {
+        picker: Picker<Project>,
+        agents: Vec<Agent>,
+    },
+    PickAgent {
+        project: Project,
+        picker: Picker<Agent>,
+    },
+}
+
+/// Something a picker can list by name.
+trait Named {
+    fn name(&self) -> &str;
+}
+
+impl Named for Project {
+    fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+impl Named for Agent {
+    fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+/// A list filtered by what the user types.
+struct Picker<T> {
+    items: Vec<T>,
+    query: String,
+    /// Index into the matching items.
+    selected: usize,
+}
+
+impl<T: Named> Picker<T> {
+    fn new(items: Vec<T>) -> Self {
+        Self {
+            items,
+            query: String::new(),
+            selected: 0,
+        }
+    }
+
+    fn matches(&self) -> Vec<&T> {
+        self.items
+            .iter()
+            .filter(|item| name_matches(item.name(), &self.query))
+            .collect()
+    }
+
+    fn chosen(&self) -> Option<&T> {
+        self.matches().get(self.selected).copied()
+    }
+
+    fn edit(&mut self, edit: Edit) {
+        match edit {
+            Edit::Type(c) => {
+                self.query.push(c);
+                self.selected = 0;
+            }
+            Edit::Erase => {
+                self.query.pop();
+                self.selected = 0;
+            }
+            Edit::SelectPrevious => self.selected = self.selected.saturating_sub(1),
+            Edit::SelectNext => {
+                let last = self.matches().len().saturating_sub(1);
+                self.selected = (self.selected + 1).min(last);
+            }
+        }
+    }
+
+    fn view(&self, title: String) -> PickerView<'_> {
+        PickerView {
+            title,
+            query: &self.query,
+            names: self.matches().into_iter().map(Named::name).collect(),
+            selected: self.selected,
+        }
+    }
+}
+
+/// A picker as the screen shows it.
+pub struct PickerView<'a> {
+    pub title: String,
+    pub query: &'a str,
+    /// Names of the matching items.
+    pub names: Vec<&'a str>,
+    /// Index into `names`. Meaningless while nothing matches.
+    pub selected: usize,
 }
 
 pub struct App {
     state_dir: Option<PathBuf>,
+    config_path: Option<PathBuf>,
     terminal: Option<Box<dyn Terminal>>,
     /// Last pane list the terminal reported, kept when listing fails.
     live_pane_ids: HashSet<String>,
     sessions: Vec<ListedSession>,
     selected: usize,
     refresh_error: Option<String>,
-    jump_error: Option<String>,
+    /// Why the last jump or launch failed, shown until the next key.
+    action_error: Option<String>,
+    screen: Screen,
     should_quit: bool,
 }
 
 impl App {
-    pub fn new(state_dir: Option<PathBuf>, terminal: Option<Box<dyn Terminal>>) -> Self {
+    pub fn new(
+        state_dir: Option<PathBuf>,
+        config_path: Option<PathBuf>,
+        terminal: Option<Box<dyn Terminal>>,
+    ) -> Self {
         Self {
             state_dir,
+            config_path,
             terminal,
             live_pane_ids: HashSet::new(),
             sessions: Vec::new(),
             selected: 0,
             refresh_error: None,
-            jump_error: None,
+            action_error: None,
+            screen: Screen::Sessions,
             should_quit: false,
         }
     }
@@ -83,7 +213,20 @@ impl App {
         if self.terminal.is_none() {
             return Some(NO_TERMINAL_MESSAGE);
         }
-        self.jump_error.as_deref().or(self.refresh_error.as_deref())
+        self.action_error
+            .as_deref()
+            .or(self.refresh_error.as_deref())
+    }
+
+    /// The open picker, or `None` while the session list is shown.
+    pub fn picker(&self) -> Option<PickerView<'_>> {
+        match &self.screen {
+            Screen::Sessions => None,
+            Screen::PickProject { picker, .. } => Some(picker.view("project".to_string())),
+            Screen::PickAgent { project, picker } => {
+                Some(picker.view(format!("agent for {}", project.name)))
+            }
+        }
     }
 
     /// Reloads the state files and the terminal's panes.
@@ -131,10 +274,18 @@ impl App {
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) {
+        if matches!(self.screen, Screen::Sessions) {
+            self.handle_session_key(key);
+        } else {
+            self.handle_picker_key(key);
+        }
+    }
+
+    fn handle_session_key(&mut self, key: KeyEvent) {
         let Some(action) = action_for(key) else {
             return;
         };
-        self.jump_error = None;
+        self.action_error = None;
         match action {
             Action::SelectPrevious => self.selected = self.selected.saturating_sub(1),
             Action::SelectNext => {
@@ -142,7 +293,21 @@ impl App {
             }
             Action::JumpToSelected => self.jump_to(self.selected),
             Action::JumpTo(index) => self.jump_to(index),
+            Action::Launch => self.open_project_picker(),
             Action::Quit => self.should_quit = true,
+        }
+    }
+
+    fn handle_picker_key(&mut self, key: KeyEvent) {
+        let Some(action) = picker_action_for(key) else {
+            return;
+        };
+        self.action_error = None;
+        match action {
+            PickerAction::Edit(edit) => self.edit_picker(edit),
+            PickerAction::Choose => self.choose(),
+            PickerAction::Back => self.screen = Screen::Sessions,
+            PickerAction::Quit => self.should_quit = true,
         }
     }
 
@@ -155,9 +320,100 @@ impl App {
             return;
         };
         if let Err(err) = terminal.focus_pane(&listed.session.pane_id) {
-            self.jump_error = Some(format!(
+            self.action_error = Some(format!(
                 "Cannot jump to {}: {err:#}",
                 listed.session.project
+            ));
+        }
+    }
+
+    /// Opens the project picker, or explains why launching is unavailable.
+    fn open_project_picker(&mut self) {
+        // Without a terminal there is nowhere to launch; the message already says so.
+        if self.terminal.is_none() {
+            return;
+        }
+        let config = match self.launch_config() {
+            Ok(config) => config,
+            Err(message) => {
+                self.action_error = Some(message);
+                return;
+            }
+        };
+        let found = projects::list(&config.roots);
+        if found.is_empty() {
+            self.action_error = Some("No projects under the roots in the config.".to_string());
+            return;
+        }
+        self.screen = Screen::PickProject {
+            picker: Picker::new(found),
+            agents: config.agents,
+        };
+    }
+
+    /// Reads the config, or returns the message that explains why launching is unavailable.
+    fn launch_config(&self) -> Result<Config, String> {
+        let Some(path) = &self.config_path else {
+            return Err(NO_CONFIG_PATH_MESSAGE.to_string());
+        };
+        let config = config::load(path).map_err(|err| format!("Cannot launch: {err:#}"))?;
+        let Some(config) = config else {
+            return Err(format!(
+                "Create {} to launch sessions (see the README).",
+                path.display()
+            ));
+        };
+        if config.agents.is_empty() {
+            return Err(format!("No agents in {}.", path.display()));
+        }
+        Ok(config)
+    }
+
+    fn edit_picker(&mut self, edit: Edit) {
+        match &mut self.screen {
+            Screen::Sessions => {}
+            Screen::PickProject { picker, .. } => picker.edit(edit),
+            Screen::PickAgent { picker, .. } => picker.edit(edit),
+        }
+    }
+
+    /// Takes the selected item: a project moves on to the agent (or launches when there
+    /// is only one), an agent launches. Nothing happens while nothing matches.
+    fn choose(&mut self) {
+        match mem::replace(&mut self.screen, Screen::Sessions) {
+            Screen::Sessions => {}
+            Screen::PickProject { picker, agents } => {
+                let Some(project) = picker.chosen().cloned() else {
+                    self.screen = Screen::PickProject { picker, agents };
+                    return;
+                };
+                if let [agent] = agents.as_slice() {
+                    self.launch(&project, agent);
+                    return;
+                }
+                self.screen = Screen::PickAgent {
+                    project,
+                    picker: Picker::new(agents),
+                };
+            }
+            Screen::PickAgent { project, picker } => {
+                let Some(agent) = picker.chosen() else {
+                    self.screen = Screen::PickAgent { project, picker };
+                    return;
+                };
+                self.launch(&project, agent);
+            }
+        }
+    }
+
+    fn launch(&mut self, project: &Project, agent: &Agent) {
+        let Some(terminal) = self.terminal.as_deref() else {
+            return;
+        };
+        if let Err(err) = terminal.spawn_tab(&project.path, &agent.command) {
+            self.action_error = Some(format!(
+                "Cannot launch {} in {}: {err:#}",
+                agent.name, project.name
             ));
         }
     }
@@ -172,9 +428,31 @@ fn action_for(key: KeyEvent) -> Option<Action> {
         KeyCode::Char('k') | KeyCode::Up => Some(Action::SelectPrevious),
         KeyCode::Char('j') | KeyCode::Down => Some(Action::SelectNext),
         KeyCode::Enter => Some(Action::JumpToSelected),
+        KeyCode::Char('n') => Some(Action::Launch),
         KeyCode::Char(digit) => jump_number_index(digit).map(Action::JumpTo),
         _ => None,
     }
+}
+
+/// Letters type into the query, so only keys without text move or quit.
+fn picker_action_for(key: KeyEvent) -> Option<PickerAction> {
+    if key.modifiers.contains(KeyModifiers::CONTROL) {
+        return (key.code == KeyCode::Char('c')).then_some(PickerAction::Quit);
+    }
+    match key.code {
+        KeyCode::Esc => Some(PickerAction::Back),
+        KeyCode::Enter => Some(PickerAction::Choose),
+        KeyCode::Up => Some(PickerAction::Edit(Edit::SelectPrevious)),
+        KeyCode::Down => Some(PickerAction::Edit(Edit::SelectNext)),
+        KeyCode::Backspace => Some(PickerAction::Edit(Edit::Erase)),
+        KeyCode::Char(c) => Some(PickerAction::Edit(Edit::Type(c))),
+        _ => None,
+    }
+}
+
+/// Whether `name` contains `query`, ignoring case. An empty query matches everything.
+fn name_matches(name: &str, query: &str) -> bool {
+    name.to_lowercase().contains(&query.to_lowercase())
 }
 
 /// Maps `'1'..='9'` to indices `0..=8`.
@@ -248,6 +526,7 @@ fn is_same_pane(a: &Session, b: &Session) -> bool {
 mod tests {
     use std::cell::RefCell;
     use std::fs;
+    use std::path::Path;
     use std::rc::Rc;
 
     use anyhow::bail;
@@ -299,6 +578,7 @@ mod tests {
             action_for(key(KeyCode::Enter)),
             Some(Action::JumpToSelected)
         );
+        assert_eq!(action_for(key(KeyCode::Char('n'))), Some(Action::Launch));
         assert_eq!(action_for(key(KeyCode::Char('q'))), Some(Action::Quit));
         assert_eq!(action_for(key(KeyCode::Esc)), Some(Action::Quit));
         assert_eq!(action_for(key(KeyCode::Char('x'))), None);
@@ -310,6 +590,40 @@ mod tests {
         assert_eq!(action_for(ctrl('c')), Some(Action::Quit));
         assert_eq!(action_for(ctrl('j')), None);
         assert_eq!(action_for(ctrl('1')), None);
+    }
+
+    #[test]
+    fn picker_keys_type_letters_instead_of_moving_or_quitting() {
+        let edit = |code| picker_action_for(key(code));
+        assert_eq!(
+            edit(KeyCode::Char('q')),
+            Some(PickerAction::Edit(Edit::Type('q')))
+        );
+        assert_eq!(
+            edit(KeyCode::Char('j')),
+            Some(PickerAction::Edit(Edit::Type('j')))
+        );
+        assert_eq!(
+            edit(KeyCode::Down),
+            Some(PickerAction::Edit(Edit::SelectNext))
+        );
+        assert_eq!(
+            edit(KeyCode::Backspace),
+            Some(PickerAction::Edit(Edit::Erase))
+        );
+        assert_eq!(edit(KeyCode::Enter), Some(PickerAction::Choose));
+        assert_eq!(edit(KeyCode::Esc), Some(PickerAction::Back));
+        let ctrl = |c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL);
+        assert_eq!(picker_action_for(ctrl('c')), Some(PickerAction::Quit));
+        assert_eq!(picker_action_for(ctrl('n')), None);
+    }
+
+    #[test]
+    fn name_matching_ignores_case_and_accepts_an_empty_query() {
+        assert!(name_matches("paneward", "WARD"));
+        assert!(name_matches("PaneWard", "pane"));
+        assert!(name_matches("paneward", ""));
+        assert!(!name_matches("paneward", "kumolo"));
     }
 
     #[test]
@@ -410,11 +724,26 @@ mod tests {
 
     const CURRENT_INSTANCE: &str = "gui-sock-this-run";
 
-    /// A terminal that reports fixed panes and records what it was asked to focus.
+    /// A terminal that reports fixed panes and records what it was asked to focus
+    /// and spawn. Spawning fails when `spawn_error` is set.
     struct FakeTerminal {
         instance: Option<&'static str>,
         live_pane_ids: Result<HashSet<String>, String>,
         focused: Rc<RefCell<Vec<String>>>,
+        spawned: Rc<RefCell<Vec<(PathBuf, String)>>>,
+        spawn_error: Option<&'static str>,
+    }
+
+    impl FakeTerminal {
+        fn with_panes(live_pane_ids: Result<HashSet<String>, String>) -> Self {
+            Self {
+                instance: Some(CURRENT_INSTANCE),
+                live_pane_ids,
+                focused: Rc::default(),
+                spawned: Rc::default(),
+                spawn_error: None,
+            }
+        }
     }
 
     impl Terminal for FakeTerminal {
@@ -444,13 +773,27 @@ mod tests {
             self.focused.borrow_mut().push(pane_id.to_string());
             Ok(())
         }
+
+        fn spawn_tab(&self, cwd: &Path, command: &str) -> Result<()> {
+            if let Some(message) = self.spawn_error {
+                bail!("{message}");
+            }
+            self.spawned
+                .borrow_mut()
+                .push((cwd.to_path_buf(), command.to_string()));
+            Ok(())
+        }
     }
 
     struct Fixture {
         app: App,
         dir: TempDir,
         focused: Rc<RefCell<Vec<String>>>,
+        spawned: Rc<RefCell<Vec<(PathBuf, String)>>>,
     }
+
+    /// Where the fixture's config file goes, inside its temporary directory.
+    const CONFIG_FILE: &str = "config.toml";
 
     /// An app over a temporary state directory holding one idle session per pane id.
     fn fixture(state_panes: &[&str], live_panes: &[&str]) -> Fixture {
@@ -458,15 +801,21 @@ mod tests {
         for pane in state_panes {
             write_state(&dir, pane, "idle");
         }
-        let focused = Rc::new(RefCell::new(Vec::new()));
-        let terminal = FakeTerminal {
-            instance: Some(CURRENT_INSTANCE),
-            live_pane_ids: Ok(ids(live_panes)),
-            focused: Rc::clone(&focused),
-        };
-        let mut app = App::new(Some(dir.path().to_path_buf()), Some(Box::new(terminal)));
+        let terminal = FakeTerminal::with_panes(Ok(ids(live_panes)));
+        let focused = Rc::clone(&terminal.focused);
+        let spawned = Rc::clone(&terminal.spawned);
+        let mut app = App::new(
+            Some(dir.path().to_path_buf()),
+            Some(dir.path().join(CONFIG_FILE)),
+            Some(Box::new(terminal)),
+        );
         app.refresh();
-        Fixture { app, dir, focused }
+        Fixture {
+            app,
+            dir,
+            focused,
+            spawned,
+        }
     }
 
     fn write_state(dir: &TempDir, pane: &str, status: &str) {
@@ -520,11 +869,9 @@ mod tests {
     #[test]
     fn refresh_keeps_the_last_panes_when_listing_fails() {
         let Fixture { mut app, dir, .. } = fixture(&["1"], &["1"]);
-        app.terminal = Some(Box::new(FakeTerminal {
-            instance: Some(CURRENT_INSTANCE),
-            live_pane_ids: Err("wezterm is gone".into()),
-            focused: Rc::default(),
-        }));
+        app.terminal = Some(Box::new(FakeTerminal::with_panes(Err(
+            "wezterm is gone".into()
+        ))));
         write_state(&dir, "1", "waiting");
 
         app.refresh();
@@ -538,7 +885,7 @@ mod tests {
     fn without_a_terminal_nothing_is_shown_and_the_reason_is_explained() {
         let dir = tempfile::tempdir().unwrap();
         write_state(&dir, "1", "idle");
-        let mut app = App::new(Some(dir.path().to_path_buf()), None);
+        let mut app = App::new(Some(dir.path().to_path_buf()), None, None);
 
         app.refresh();
 
@@ -580,11 +927,7 @@ mod tests {
     #[test]
     fn a_failed_jump_shows_a_message_until_the_next_key() {
         let Fixture { mut app, .. } = fixture(&["1"], &["1"]);
-        app.terminal = Some(Box::new(FakeTerminal {
-            instance: Some(CURRENT_INSTANCE),
-            live_pane_ids: Ok(HashSet::new()),
-            focused: Rc::default(),
-        }));
+        app.terminal = Some(Box::new(FakeTerminal::with_panes(Ok(HashSet::new()))));
 
         app.handle_key(key(KeyCode::Enter));
         assert_eq!(
@@ -611,5 +954,228 @@ mod tests {
         let Fixture { mut app, .. } = fixture(&[], &[]);
         app.handle_key(key(KeyCode::Char('q')));
         assert!(app.should_quit());
+    }
+
+    /// Writes a config whose single root holds `projects`, and returns that root.
+    fn write_config(dir: &TempDir, projects: &[&str], agents: &[(&str, &str)]) -> PathBuf {
+        let root = dir.path().join("src");
+        for project in projects {
+            fs::create_dir_all(root.join(project)).unwrap();
+        }
+        let agents: String = agents
+            .iter()
+            .map(|(name, command)| format!("{name} = \"{command}\"\n"))
+            .collect::<Vec<_>>()
+            .concat();
+        let text = format!("roots = [\"{}\"]\n\n[agents]\n{agents}", root.display());
+        fs::write(dir.path().join(CONFIG_FILE), text).unwrap();
+        root
+    }
+
+    fn type_text(app: &mut App, text: &str) {
+        for c in text.chars() {
+            app.handle_key(key(KeyCode::Char(c)));
+        }
+    }
+
+    fn picker_names(app: &App) -> Vec<String> {
+        app.picker()
+            .unwrap()
+            .names
+            .iter()
+            .map(ToString::to_string)
+            .collect()
+    }
+
+    #[test]
+    fn n_opens_the_project_picker() {
+        let Fixture { mut app, dir, .. } = fixture(&[], &[]);
+        write_config(&dir, &["kumolo", "paneward"], &[("claude", "claude")]);
+
+        app.handle_key(key(KeyCode::Char('n')));
+
+        let picker = app.picker().unwrap();
+        assert_eq!(picker.title, "project");
+        assert_eq!(picker.names, ["kumolo", "paneward"]);
+    }
+
+    #[test]
+    fn typing_filters_the_projects_and_backspace_widens_them_again() {
+        let Fixture { mut app, dir, .. } = fixture(&[], &[]);
+        write_config(&dir, &["kumolo", "paneward"], &[("claude", "claude")]);
+        app.handle_key(key(KeyCode::Char('n')));
+
+        type_text(&mut app, "WARDx");
+        assert_eq!(picker_names(&app), Vec::<String>::new());
+
+        app.handle_key(key(KeyCode::Backspace));
+        assert_eq!(picker_names(&app), ["paneward"]);
+        assert_eq!(app.picker().unwrap().query, "WARD");
+    }
+
+    #[test]
+    fn with_one_agent_picking_a_project_launches_it() {
+        let Fixture {
+            mut app,
+            dir,
+            spawned,
+            ..
+        } = fixture(&[], &[]);
+        let root = write_config(&dir, &["kumolo", "paneward"], &[("claude", "claude -c")]);
+        app.handle_key(key(KeyCode::Char('n')));
+
+        app.handle_key(key(KeyCode::Down));
+        app.handle_key(key(KeyCode::Enter));
+
+        assert_eq!(
+            *spawned.borrow(),
+            [(root.join("paneward"), "claude -c".to_string())]
+        );
+        assert!(app.picker().is_none());
+        assert_eq!(app.message(), None);
+    }
+
+    #[test]
+    fn with_several_agents_the_agent_is_picked_next() {
+        let Fixture {
+            mut app,
+            dir,
+            spawned,
+            ..
+        } = fixture(&[], &[]);
+        let root = write_config(
+            &dir,
+            &["paneward"],
+            &[("claude", "claude"), ("codex", "codex")],
+        );
+        app.handle_key(key(KeyCode::Char('n')));
+        app.handle_key(key(KeyCode::Enter));
+
+        let picker = app.picker().unwrap();
+        assert_eq!(picker.title, "agent for paneward");
+        assert_eq!(picker.names, ["claude", "codex"]);
+
+        type_text(&mut app, "co");
+        app.handle_key(key(KeyCode::Enter));
+
+        assert_eq!(
+            *spawned.borrow(),
+            [(root.join("paneward"), "codex".to_string())]
+        );
+        assert!(app.picker().is_none());
+    }
+
+    #[test]
+    fn enter_with_nothing_matching_keeps_the_picker_open() {
+        let Fixture {
+            mut app,
+            dir,
+            spawned,
+            ..
+        } = fixture(&[], &[]);
+        write_config(&dir, &["paneward"], &[("claude", "claude")]);
+        app.handle_key(key(KeyCode::Char('n')));
+        type_text(&mut app, "zzz");
+
+        app.handle_key(key(KeyCode::Enter));
+
+        assert!(app.picker().is_some());
+        assert_eq!(*spawned.borrow(), Vec::<(PathBuf, String)>::new());
+    }
+
+    #[test]
+    fn esc_goes_back_to_the_sessions_without_quitting() {
+        let Fixture { mut app, dir, .. } = fixture(&[], &[]);
+        write_config(&dir, &["paneward"], &[("claude", "claude")]);
+        app.handle_key(key(KeyCode::Char('n')));
+
+        app.handle_key(key(KeyCode::Esc));
+
+        assert!(app.picker().is_none());
+        assert!(!app.should_quit());
+    }
+
+    #[test]
+    fn a_failed_launch_shows_a_message() {
+        let Fixture { mut app, dir, .. } = fixture(&[], &[]);
+        write_config(&dir, &["paneward"], &[("claude", "claude")]);
+        let mut terminal = FakeTerminal::with_panes(Ok(HashSet::new()));
+        terminal.spawn_error = Some("wezterm is gone");
+        app.terminal = Some(Box::new(terminal));
+        app.handle_key(key(KeyCode::Char('n')));
+
+        app.handle_key(key(KeyCode::Enter));
+
+        assert!(app.picker().is_none());
+        assert_eq!(
+            app.message(),
+            Some("Cannot launch claude in paneward: wezterm is gone")
+        );
+    }
+
+    #[test]
+    fn without_a_config_file_n_explains_how_to_set_one_up() {
+        let Fixture { mut app, dir, .. } = fixture(&[], &[]);
+
+        app.handle_key(key(KeyCode::Char('n')));
+
+        assert!(app.picker().is_none());
+        let expected = format!(
+            "Create {} to launch sessions (see the README).",
+            dir.path().join(CONFIG_FILE).display()
+        );
+        assert_eq!(app.message(), Some(expected.as_str()));
+    }
+
+    #[test]
+    fn a_broken_config_file_is_shown_as_a_message() {
+        let Fixture { mut app, dir, .. } = fixture(&[], &[]);
+        fs::write(dir.path().join(CONFIG_FILE), "roots = [").unwrap();
+
+        app.handle_key(key(KeyCode::Char('n')));
+
+        assert!(app.picker().is_none());
+        assert!(
+            app.message()
+                .unwrap()
+                .starts_with("Cannot launch: invalid config")
+        );
+    }
+
+    #[test]
+    fn a_config_without_agents_cannot_launch() {
+        let Fixture { mut app, dir, .. } = fixture(&[], &[]);
+        write_config(&dir, &["paneward"], &[]);
+
+        app.handle_key(key(KeyCode::Char('n')));
+
+        assert!(app.picker().is_none());
+        assert!(app.message().unwrap().starts_with("No agents in"));
+    }
+
+    #[test]
+    fn a_config_without_projects_cannot_launch() {
+        let Fixture { mut app, dir, .. } = fixture(&[], &[]);
+        write_config(&dir, &[], &[("claude", "claude")]);
+
+        app.handle_key(key(KeyCode::Char('n')));
+
+        assert!(app.picker().is_none());
+        assert_eq!(
+            app.message(),
+            Some("No projects under the roots in the config.")
+        );
+    }
+
+    #[test]
+    fn without_a_terminal_n_does_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = App::new(None, Some(dir.path().join(CONFIG_FILE)), None);
+        write_config(&dir, &["paneward"], &[("claude", "claude")]);
+
+        app.handle_key(key(KeyCode::Char('n')));
+
+        assert!(app.picker().is_none());
+        assert_eq!(app.message(), Some(NO_TERMINAL_MESSAGE));
     }
 }

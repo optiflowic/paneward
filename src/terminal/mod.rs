@@ -3,10 +3,11 @@
 mod wezterm;
 
 use std::collections::HashSet;
+use std::path::Path;
 
 use anyhow::Result;
 
-/// A terminal whose panes paneward can list and focus.
+/// A terminal whose panes paneward can list, focus and open.
 pub trait Terminal {
     /// Backend name, as written in the `terminal` field of state files.
     fn name(&self) -> &'static str;
@@ -20,6 +21,9 @@ pub trait Terminal {
 
     /// Brings the pane to the front, switching to its tab if needed.
     fn focus_pane(&self, pane_id: &str) -> Result<()>;
+
+    /// Opens a new tab in `cwd` that runs `command` through the user's login shell.
+    fn spawn_tab(&self, cwd: &Path, command: &str) -> Result<()>;
 }
 
 /// Returns the backend of the terminal paneward runs in, or `None` outside a

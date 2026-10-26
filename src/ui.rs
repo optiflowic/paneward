@@ -7,7 +7,7 @@ use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, List, ListItem, ListState, Paragraph, Row, Table, TableState, Wrap};
 
-use crate::app::{App, ListedSession, MAX_JUMP_NUMBER};
+use crate::app::{App, ListedSession, MAX_JUMP_NUMBER, PickerView};
 use crate::state::Status;
 
 /// `auto` uses the dock when the area is wider than this many times its height.
@@ -18,8 +18,11 @@ const DOCK_ASPECT_RATIO: u32 = 2;
 const MAX_MESSAGE_LINES: u16 = 3;
 
 const TITLE: &str = " paneward ";
-const SIDEBAR_HINTS: &str = " ⏎ jump  q quit ";
-const DOCK_HINTS: &str = " ↑↓ move  ⏎ jump  q quit ";
+const SIDEBAR_HINTS: &str = " ⏎ jump  n new  q quit ";
+const DOCK_HINTS: &str = " ↑↓ move  ⏎ jump  n new  q quit ";
+const PICKER_HINTS: &str = " ⏎ pick  esc back ";
+/// Separates a picker's title from what the user typed.
+const QUERY_PROMPT: &str = " > ";
 const HIGHLIGHT_SYMBOL: &str = "▶ ";
 
 const DOCK_COLUMN_SPACING: u16 = 2;
@@ -55,9 +58,11 @@ enum Shape {
 pub fn draw(frame: &mut Frame, app: &App, layout: LayoutChoice, now: u64) {
     let area = frame.area();
     let shape = shape_for(layout, area);
-    let hints = match shape {
-        Shape::Sidebar => SIDEBAR_HINTS,
-        Shape::Dock => DOCK_HINTS,
+    let picker = app.picker();
+    let hints = match (&picker, &shape) {
+        (Some(_), _) => PICKER_HINTS,
+        (None, Shape::Sidebar) => SIDEBAR_HINTS,
+        (None, Shape::Dock) => DOCK_HINTS,
     };
     let block = Block::bordered()
         .title(TITLE.bold())
@@ -73,6 +78,10 @@ pub fn draw(frame: &mut Frame, app: &App, layout: LayoutChoice, now: u64) {
         frame.render_widget(text, message_area);
     }
 
+    if let Some(picker) = picker {
+        draw_picker(frame, &picker, list_area);
+        return;
+    }
     if app.sessions().is_empty() {
         frame.render_widget(Paragraph::new("No sessions").dim(), list_area);
         return;
@@ -121,6 +130,38 @@ fn message_height(message: &str, width: u16) -> u16 {
     u16::try_from(lines)
         .unwrap_or(MAX_MESSAGE_LINES)
         .clamp(1, MAX_MESSAGE_LINES)
+}
+
+/// The query line, with the cursor after the query, over the matching names.
+fn draw_picker(frame: &mut Frame, picker: &PickerView, area: Rect) {
+    let [query_area, list_area] =
+        Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(area);
+    let query = Line::from(vec![
+        Span::raw(picker.title.as_str()).dim(),
+        Span::raw(QUERY_PROMPT).dim(),
+        Span::raw(picker.query),
+    ]);
+    let cursor_x = query_area
+        .x
+        .saturating_add(u16::try_from(query.width()).unwrap_or(u16::MAX))
+        .min(query_area.right().saturating_sub(1));
+    frame.render_widget(query, query_area);
+    frame.set_cursor_position((cursor_x, query_area.y));
+
+    if picker.names.is_empty() {
+        frame.render_widget(Paragraph::new("No matches").dim(), list_area);
+        return;
+    }
+    let items: Vec<ListItem> = picker
+        .names
+        .iter()
+        .map(|name| ListItem::new(*name))
+        .collect();
+    let list = List::new(items)
+        .highlight_symbol(HIGHLIGHT_SYMBOL)
+        .highlight_style(Modifier::BOLD);
+    let mut state = ListState::default().with_selected(Some(picker.selected));
+    frame.render_stateful_widget(list, list_area, &mut state);
 }
 
 fn draw_sidebar(frame: &mut Frame, app: &App, area: Rect, now: u64) {
