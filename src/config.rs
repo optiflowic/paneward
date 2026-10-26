@@ -8,7 +8,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 
 const CONFIG_DIR_NAME: &str = "paneward";
@@ -72,6 +72,14 @@ pub fn load(path: &Path) -> Result<Option<Config>> {
 
 fn parse(text: &str, home: Option<&Path>) -> Result<Config> {
     let file: ConfigFile = toml::from_str(text)?;
+    // An empty command would open a tab that closes at once, with nothing to explain why.
+    if let Some(name) = file
+        .agents
+        .iter()
+        .find_map(|(name, command)| command.trim().is_empty().then_some(name))
+    {
+        bail!("agent `{name}` has an empty command");
+    }
     let roots = file
         .roots
         .iter()
@@ -149,6 +157,13 @@ mod tests {
     #[test]
     fn unknown_fields_are_ignored() {
         assert!(parse_with_home("theme = \"dark\"\nroots = []").is_ok());
+    }
+
+    #[test]
+    fn an_agent_with_an_empty_command_is_an_error() {
+        let err = parse_with_home("[agents]\nclaude = \"claude\"\ncodex = \"  \"").unwrap_err();
+        assert_eq!(err.to_string(), "agent `codex` has an empty command");
+        assert!(parse_with_home("[agents]\nclaude = \"\"").is_err());
     }
 
     #[test]
