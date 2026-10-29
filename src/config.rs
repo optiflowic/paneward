@@ -65,7 +65,7 @@ pub fn load(path: &Path) -> Result<Option<Config>> {
         Err(err) => return Err(err).with_context(|| format!("failed to read {}", path.display())),
     };
     let home = env::var_os("HOME").filter(|home| !home.is_empty());
-    // The reason goes first so that it stays visible when a narrow pane cuts the message.
+    // The file goes last so that a narrow pane cuts it rather than what is wrong.
     parse(&text, home.as_deref().map(Path::new))
         .map_err(|err| anyhow!("{err:#} in {}", path.display()))
         .map(Some)
@@ -95,8 +95,9 @@ fn parse(text: &str, home: Option<&Path>) -> Result<Config> {
     Ok(Config { roots, agents })
 }
 
-/// The reason and position on one line. The error's own text adds a source snippet
-/// over several lines, which pushes the reason out of the message area.
+/// The position, then the reason, on one line. The error's own text adds a source
+/// snippet over several lines, which pushes the reason out of the message area. The
+/// position goes first because a reason can quote a long value.
 fn describe_toml_error(text: &str, err: &toml::de::Error) -> String {
     let reason = err
         .message()
@@ -112,7 +113,7 @@ fn describe_toml_error(text: &str, err: &toml::de::Error) -> String {
     let line = before.matches('\n').count() + 1;
     let line_text = before.rsplit('\n').next().unwrap_or(before);
     let column = line_text.chars().count() + 1;
-    format!("{reason} at line {line}, column {column}")
+    format!("line {line}, column {column}: {reason}")
 }
 
 /// Expands a leading `~` to `home`. Without a home the path is kept as written.
@@ -245,7 +246,7 @@ mod tests {
     }
 
     #[test]
-    fn errors_give_the_reason_before_the_file_on_one_line() {
+    fn errors_give_the_position_and_reason_before_the_file_on_one_line() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join(CONFIG_FILE_NAME);
         fs::write(&path, "[agents]\nclaude = 1\n").unwrap();
@@ -253,7 +254,7 @@ mod tests {
         assert_eq!(
             message,
             format!(
-                "invalid type: integer `1`, expected a string at line 2, column 10 in {}",
+                "line 2, column 10: invalid type: integer `1`, expected a string in {}",
                 path.display()
             )
         );
@@ -264,7 +265,7 @@ mod tests {
         let err = parse_with_home("roots = [").unwrap_err();
         assert_eq!(
             err.to_string(),
-            "unclosed array, expected `]` at line 1, column 10"
+            "line 1, column 10: unclosed array, expected `]`"
         );
     }
 }
