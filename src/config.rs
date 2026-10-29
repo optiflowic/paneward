@@ -174,13 +174,15 @@ mod tests {
 
     #[test]
     fn sorts_agents_ignoring_case() {
-        let config = parse_with_home("[agents]\nCodex = \"codex\"\nclaude = \"claude\"").unwrap();
+        let config =
+            parse_with_home("[agents]\ncodex = \"codex\"\nCodex = \"codex\"\nclaude = \"claude\"")
+                .unwrap();
         let names: Vec<&str> = config
             .agents
             .iter()
             .map(|agent| agent.name.as_str())
             .collect();
-        assert_eq!(names, ["claude", "Codex"]);
+        assert_eq!(names, ["claude", "Codex", "codex"]);
     }
 
     #[test]
