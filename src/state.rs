@@ -143,13 +143,14 @@ fn project_name(cwd: Option<&str>, pane_id: &str) -> String {
     )
 }
 
-/// Orders sessions by status (`waiting`, `running`, `idle`), then by project name.
-/// The pane id breaks ties so the order does not jump between reloads. It is
+/// Orders sessions by status (`waiting`, `running`, `idle`), then by project name
+/// ignoring case, then as written so that `Foo` and `foo` keep a fixed order. The pane id breaks ties so the order does not jump between reloads. It is
 /// compared as a string: any fixed order will do, and ids are not always numbers.
 fn sort_for_display(sessions: &mut [Session]) {
     sessions.sort_by(|a, b| {
         a.status
             .cmp(&b.status)
+            .then_with(|| a.project.to_lowercase().cmp(&b.project.to_lowercase()))
             .then_with(|| a.project.cmp(&b.project))
             .then_with(|| a.pane_id.cmp(&b.pane_id))
     });
@@ -371,5 +372,24 @@ mod tests {
                 (Status::Idle, "alpha", "1"),
             ]
         );
+    }
+
+    #[test]
+    fn sorts_project_names_ignoring_case() {
+        let dir = tempfile::tempdir().unwrap();
+        for (pane, cwd) in [
+            ("1", "/src/gamma"),
+            ("2", "/src/beta"),
+            ("3", "/src/Beta"),
+            ("4", "/src/alpha"),
+        ] {
+            let path = dir.path().join(format!("wezterm-{pane}.json"));
+            fs::write(path, state_json("idle", pane, cwd)).unwrap();
+        }
+
+        let sessions = load_sessions(dir.path()).unwrap();
+
+        let projects: Vec<&str> = sessions.iter().map(|s| s.project.as_str()).collect();
+        assert_eq!(projects, ["alpha", "Beta", "beta", "gamma"]);
     }
 }

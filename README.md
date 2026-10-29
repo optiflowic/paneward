@@ -129,9 +129,9 @@ time counts from their state file's last update.
 | `○`  | `idle`    | The agent finished its turn. |
 
 Sessions needing you come first: `waiting`, then `running`, then `idle`, each by
-project name. The list updates as soon as a state file changes, or within a few
-seconds when paneward cannot watch the state directory (e.g. it does not exist
-yet). Sessions whose pane is gone (closed pane, terminal restart) are hidden within
+project name (ignoring case). The list updates as soon as a state file changes,
+or within a few seconds when paneward cannot watch the state directory (e.g. it
+does not exist yet). Sessions whose pane is gone (closed pane, terminal restart) are hidden within
 a few seconds, the next time paneward lists the panes. If listing the panes fails,
 paneward shows the error and keeps using the last pane list it got: state file
 changes still show up, but panes opened or closed since then are not noticed.
