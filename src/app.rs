@@ -1136,9 +1136,9 @@ mod tests {
 
         assert!(app.picker().is_none());
         assert!(
-            app.message()
-                .unwrap()
-                .starts_with("Cannot launch: invalid config")
+            app.message().unwrap().starts_with(
+                "Cannot launch: unclosed array, expected `]` at line 1, column 10 in "
+            )
         );
     }
 

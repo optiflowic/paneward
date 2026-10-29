@@ -8,7 +8,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use serde::Deserialize;
 
 const CONFIG_DIR_NAME: &str = "paneward";
@@ -65,13 +65,15 @@ pub fn load(path: &Path) -> Result<Option<Config>> {
         Err(err) => return Err(err).with_context(|| format!("failed to read {}", path.display())),
     };
     let home = env::var_os("HOME").filter(|home| !home.is_empty());
+    // The reason goes first so that it stays visible when a narrow pane cuts the message.
     parse(&text, home.as_deref().map(Path::new))
-        .with_context(|| format!("invalid config {}", path.display()))
+        .map_err(|err| anyhow!("{err:#} in {}", path.display()))
         .map(Some)
 }
 
 fn parse(text: &str, home: Option<&Path>) -> Result<Config> {
-    let file: ConfigFile = toml::from_str(text)?;
+    let file: ConfigFile =
+        toml::from_str(text).map_err(|err| anyhow!(describe_toml_error(text, &err)))?;
     // An empty command would open a tab that closes at once, with nothing to explain why.
     if let Some(name) = file
         .agents
@@ -91,6 +93,26 @@ fn parse(text: &str, home: Option<&Path>) -> Result<Config> {
         .map(|(name, command)| Agent { name, command })
         .collect();
     Ok(Config { roots, agents })
+}
+
+/// The reason and position on one line. The error's own text adds a source snippet
+/// over several lines, which pushes the reason out of the message area.
+fn describe_toml_error(text: &str, err: &toml::de::Error) -> String {
+    let reason = err
+        .message()
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let Some(span) = err.span() else {
+        return reason;
+    };
+    let before = text.get(..span.start).unwrap_or(text);
+    let line = before.matches('\n').count() + 1;
+    let line_text = before.rsplit('\n').next().unwrap_or(before);
+    let column = line_text.chars().count() + 1;
+    format!("{reason} at line {line}, column {column}")
 }
 
 /// Expands a leading `~` to `home`. Without a home the path is kept as written.
@@ -220,5 +242,29 @@ mod tests {
         fs::write(&path, "roots = [").unwrap();
         let err = load(&path).unwrap_err();
         assert!(format!("{err:#}").contains(&path.display().to_string()));
+    }
+
+    #[test]
+    fn errors_give_the_reason_before_the_file_on_one_line() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(CONFIG_FILE_NAME);
+        fs::write(&path, "[agents]\nclaude = 1\n").unwrap();
+        let message = format!("{:#}", load(&path).unwrap_err());
+        assert_eq!(
+            message,
+            format!(
+                "invalid type: integer `1`, expected a string at line 2, column 10 in {}",
+                path.display()
+            )
+        );
+    }
+
+    #[test]
+    fn syntax_errors_keep_every_line_of_the_reason() {
+        let err = parse_with_home("roots = [").unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "unclosed array, expected `]` at line 1, column 10"
+        );
     }
 }
