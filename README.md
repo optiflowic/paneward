@@ -166,8 +166,8 @@ create it.
 | Version | Scope |
 |---------|-------|
 | v0.1    | Session list, status, jump to pane. Claude Code on WezTerm. Sidebar and dock layouts. |
-| v0.2    | Launch sessions. Codex support. |
-| later   | tmux backend, git worktree launch. |
+| v0.2    | Launch sessions. |
+| later   | Codex support, tmux backend, git worktree launch. |
 
 ## Development
 
