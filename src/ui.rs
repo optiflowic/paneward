@@ -6,6 +6,7 @@ use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, List, ListItem, ListState, Paragraph, Row, Table, TableState, Wrap};
+use unicode_width::UnicodeWidthChar;
 
 use crate::app::{App, ListedSession, MAX_JUMP_NUMBER, PickerView};
 use crate::state::Status;
@@ -24,6 +25,8 @@ const PICKER_HINTS: &str = " ⏎ pick  esc back ";
 /// Separates a picker's title from what the user typed.
 const QUERY_PROMPT: &str = " > ";
 const HIGHLIGHT_SYMBOL: &str = "▶ ";
+/// Ends text cut to fit, so that it does not look complete.
+const ELLIPSIS: &str = "…";
 
 const DOCK_COLUMN_SPACING: u16 = 2;
 /// Width of the jump number and status icon, `1 ●`.
@@ -152,10 +155,11 @@ fn draw_picker(frame: &mut Frame, picker: &PickerView, area: Rect) {
         frame.render_widget(Paragraph::new("No matches").dim(), list_area);
         return;
     }
+    let width = list_item_width(list_area);
     let items: Vec<ListItem> = picker
         .names
         .iter()
-        .map(|name| ListItem::new(*name))
+        .map(|name| ListItem::new(fit_line(Line::from(*name), width)))
         .collect();
     let list = List::new(items)
         .highlight_symbol(HIGHLIGHT_SYMBOL)
@@ -165,11 +169,12 @@ fn draw_picker(frame: &mut Frame, picker: &PickerView, area: Rect) {
 }
 
 fn draw_sidebar(frame: &mut Frame, app: &App, area: Rect, now: u64) {
+    let width = list_item_width(area);
     let items: Vec<ListItem> = app
         .sessions()
         .iter()
         .enumerate()
-        .map(|(index, listed)| sidebar_item(index, listed, now))
+        .map(|(index, listed)| sidebar_item(index, listed, now, width))
         .collect();
     let list = List::new(items)
         .highlight_symbol(HIGHLIGHT_SYMBOL)
@@ -178,8 +183,13 @@ fn draw_sidebar(frame: &mut Frame, app: &App, area: Rect, now: u64) {
     frame.render_stateful_widget(list, area, &mut state);
 }
 
-/// `1 ● project` over `    agent  status  2m`.
-fn sidebar_item(index: usize, listed: &ListedSession, now: u64) -> ListItem<'_> {
+/// Room for an item's text in a list, which keeps space for the highlight symbol.
+fn list_item_width(area: Rect) -> usize {
+    usize::from(area.width).saturating_sub(Line::from(HIGHLIGHT_SYMBOL).width())
+}
+
+/// `1 ● project` over `    agent  status  2m`, each cut to `width`.
+fn sidebar_item(index: usize, listed: &ListedSession, now: u64, width: usize) -> ListItem<'_> {
     let session = &listed.session;
     let title = Line::from(vec![
         jump_number(index),
@@ -195,22 +205,27 @@ fn sidebar_item(index: usize, listed: &ListedSession, now: u64) -> ListItem<'_> 
         format_elapsed(now.saturating_sub(listed.status_since)),
     ))
     .dim();
-    ListItem::new(vec![title, details])
+    ListItem::new(vec![fit_line(title, width), fit_line(details, width)])
 }
 
 fn draw_dock(frame: &mut Frame, app: &App, area: Rect, now: u64) {
+    let sessions = || app.sessions().iter().map(|listed| &listed.session);
+    let (project_width, agent_width) = dock_name_widths(
+        dock_name_room(area),
+        widest(sessions().map(|session| session.project.as_str())),
+        widest(sessions().map(|session| session.agent.as_str())),
+    );
     let rows = app
         .sessions()
         .iter()
         .enumerate()
-        .map(|(index, listed)| dock_row(index, listed, now));
-    let sessions = || app.sessions().iter().map(|listed| &listed.session);
+        .map(|(index, listed)| dock_row(index, listed, now, project_width, agent_width));
     // Columns as wide as their content, packed to the left.
     let widths = [
         Constraint::Length(MARKER_WIDTH),
         Constraint::Length(STATUS_WIDTH),
-        Constraint::Length(widest(sessions().map(|session| session.project.as_str()))),
-        Constraint::Length(widest(sessions().map(|session| session.agent.as_str()))),
+        Constraint::Length(project_width),
+        Constraint::Length(agent_width),
         Constraint::Length(ELAPSED_WIDTH),
     ];
     let table = Table::new(rows, widths)
@@ -221,14 +236,39 @@ fn draw_dock(frame: &mut Frame, app: &App, area: Rect, now: u64) {
     frame.render_stateful_widget(table, area, &mut state);
 }
 
+/// Room left for the project and agent columns once the fixed columns, the spacing
+/// between the five columns and the highlight symbol are placed.
+fn dock_name_room(area: Rect) -> u16 {
+    let highlight = u16::try_from(Line::from(HIGHLIGHT_SYMBOL).width()).unwrap_or(u16::MAX);
+    area.width
+        .saturating_sub(highlight)
+        .saturating_sub(MARKER_WIDTH + STATUS_WIDTH + ELAPSED_WIDTH)
+        .saturating_sub(4 * DOCK_COLUMN_SPACING)
+}
+
+/// Splits `room` between the project and agent columns. Both get their full width
+/// when it fits; otherwise the agent gets at most half, since the project tells
+/// sessions apart.
+fn dock_name_widths(room: u16, project: u16, agent: u16) -> (u16, u16) {
+    let agent = agent.min(room.saturating_sub(project).max(room / 2));
+    let project = project.min(room.saturating_sub(agent));
+    (project, agent)
+}
+
 /// Display width of the widest text, saturating at `u16::MAX`.
 fn widest<'a>(texts: impl Iterator<Item = &'a str>) -> u16 {
     let width = texts.map(|text| Span::raw(text).width()).max().unwrap_or(0);
     u16::try_from(width).unwrap_or(u16::MAX)
 }
 
-/// `1 ● waiting  project  agent  2m`.
-fn dock_row(index: usize, listed: &ListedSession, now: u64) -> Row<'_> {
+/// `1 ● waiting  project  agent  2m`, with the names cut to their columns.
+fn dock_row(
+    index: usize,
+    listed: &ListedSession,
+    now: u64,
+    project_width: u16,
+    agent_width: u16,
+) -> Row<'_> {
     let session = &listed.session;
     Row::new(vec![
         Line::from(vec![
@@ -237,10 +277,50 @@ fn dock_row(index: usize, listed: &ListedSession, now: u64) -> Row<'_> {
             status_icon(session.status),
         ]),
         Line::from(status_label(session.status)),
-        Line::from(session.project.as_str()).bold(),
-        Line::from(session.agent.as_str()).dim(),
+        fit_line(
+            Line::from(session.project.as_str()).bold(),
+            usize::from(project_width),
+        ),
+        fit_line(
+            Line::from(session.agent.as_str()).dim(),
+            usize::from(agent_width),
+        ),
         Line::from(format_elapsed(now.saturating_sub(listed.status_since))).dim(),
     ])
+}
+
+/// Cuts `line` to `width` columns, ending it with an ellipsis when anything is cut.
+fn fit_line(mut line: Line<'_>, width: usize) -> Line<'_> {
+    if line.width() <= width {
+        return line;
+    }
+    let mut room = width.saturating_sub(Line::from(ELLIPSIS).width());
+    let mut kept = Vec::new();
+    for span in std::mem::take(&mut line.spans) {
+        let (text, cut) = take_width(&span.content, &mut room);
+        kept.push(Span::styled(text, span.style));
+        if cut {
+            kept.push(Span::styled(ELLIPSIS, span.style));
+            break;
+        }
+    }
+    line.spans = kept;
+    line
+}
+
+/// The longest start of `text` that fits in `room` columns, taking that width from
+/// `room`, and whether anything was left out.
+fn take_width(text: &str, room: &mut usize) -> (String, bool) {
+    let mut kept = String::new();
+    for c in text.chars() {
+        let width = c.width().unwrap_or(0);
+        if width > *room {
+            return (kept, true);
+        }
+        *room -= width;
+        kept.push(c);
+    }
+    (kept, false)
 }
 
 /// The number key that jumps to this row, blank past the last number key.
@@ -311,6 +391,55 @@ mod tests {
         let tall = Rect::new(0, 0, 30, 60);
         assert_eq!(shape_for(LayoutChoice::Sidebar, wide), Shape::Sidebar);
         assert_eq!(shape_for(LayoutChoice::Dock, tall), Shape::Dock);
+    }
+
+    fn text(line: &Line) -> String {
+        line.spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect()
+    }
+
+    #[test]
+    fn lines_that_fit_are_kept_as_they_are() {
+        let line = Line::from("alpha");
+        assert_eq!(fit_line(line.clone(), 5), line);
+    }
+
+    #[test]
+    fn lines_that_do_not_fit_end_with_an_ellipsis() {
+        let line = fit_line(Line::from("paneward"), 5);
+        assert_eq!(text(&line), "pane…");
+        assert_eq!(line.width(), 5);
+    }
+
+    #[test]
+    fn wide_characters_are_never_split() {
+        let line = fit_line(Line::from("日本語"), 4);
+        assert_eq!(text(&line), "日…");
+    }
+
+    #[test]
+    fn cutting_keeps_the_styles_of_the_spans() {
+        let line = Line::from(vec![Span::raw("1 "), Span::raw("paneward").bold()]).dim();
+        let fitted = fit_line(line, 6);
+        assert_eq!(text(&fitted), "1 pan…");
+        assert_eq!(fitted.style, Style::new().dim());
+        assert_eq!(fitted.spans[1].style, Style::new().bold());
+        assert_eq!(fitted.spans[2].style, Style::new().bold());
+    }
+
+    #[test]
+    fn dock_names_get_their_full_width_when_it_fits() {
+        assert_eq!(dock_name_widths(20, 8, 6), (8, 6));
+    }
+
+    #[test]
+    fn dock_agent_gets_at_most_half_when_names_do_not_fit() {
+        assert_eq!(dock_name_widths(12, 10, 6), (6, 6));
+        assert_eq!(dock_name_widths(10, 10, 8), (5, 5));
+        assert_eq!(dock_name_widths(10, 3, 8), (3, 7));
+        assert_eq!(dock_name_widths(0, 3, 8), (0, 0));
     }
 
     #[test]
