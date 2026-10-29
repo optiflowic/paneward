@@ -6,7 +6,8 @@ use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, List, ListItem, ListState, Paragraph, Row, Table, TableState, Wrap};
-use unicode_width::UnicodeWidthChar;
+use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
 
 use crate::app::{App, ListedSession, MAX_JUMP_NUMBER, PickerView};
 use crate::state::Status;
@@ -291,6 +292,11 @@ fn dock_row(
 
 /// Cuts `line` to `width` columns, ending it with an ellipsis when anything is cut.
 fn fit_line(mut line: Line<'_>, width: usize) -> Line<'_> {
+    // Not even the ellipsis fits.
+    if width == 0 {
+        line.spans.clear();
+        return line;
+    }
     if line.width() <= width {
         return line;
     }
@@ -309,16 +315,17 @@ fn fit_line(mut line: Line<'_>, width: usize) -> Line<'_> {
 }
 
 /// The longest start of `text` that fits in `room` columns, taking that width from
-/// `room`, and whether anything was left out.
+/// `room`, and whether anything was left out. Cuts between graphemes, so that a
+/// sequence such as `👩‍💻` stays whole.
 fn take_width(text: &str, room: &mut usize) -> (String, bool) {
     let mut kept = String::new();
-    for c in text.chars() {
-        let width = c.width().unwrap_or(0);
+    for grapheme in text.graphemes(true) {
+        let width = grapheme.width();
         if width > *room {
             return (kept, true);
         }
         *room -= width;
-        kept.push(c);
+        kept.push_str(grapheme);
     }
     (kept, false)
 }
@@ -417,6 +424,18 @@ mod tests {
     fn wide_characters_are_never_split() {
         let line = fit_line(Line::from("日本語"), 4);
         assert_eq!(text(&line), "日…");
+    }
+
+    #[test]
+    fn emoji_sequences_are_never_split() {
+        let line = fit_line(Line::from("👩‍💻abc"), 4);
+        assert_eq!(text(&line), "👩‍💻a…");
+    }
+
+    #[test]
+    fn nothing_is_left_when_there_is_no_room() {
+        let line = fit_line(Line::from("alpha"), 0);
+        assert_eq!(line.width(), 0);
     }
 
     #[test]
