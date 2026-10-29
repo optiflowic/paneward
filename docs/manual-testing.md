@@ -25,7 +25,8 @@ support as not tested. Once it passes, remove that note from the README and the
 - [ ] Status changes (`running` → `waiting` → `idle`) are reflected within a second.
 - [ ] While an agent runs several tools in a row, its `running` time keeps counting
       instead of restarting at each tool call.
-- [ ] Sessions are ordered `waiting`, `running`, `idle`, then by project name.
+- [ ] Sessions are ordered `waiting`, `running`, `idle`, then by project name
+      ignoring case.
 - [ ] Ending the session (agent exits normally) removes it from the list.
 - [ ] Closing the pane without ending the session hides it from the list.
 - [ ] After restarting the terminal, sessions from the previous run are not shown,
@@ -48,7 +49,8 @@ Run with a config file listing at least two roots and one agent (see the README,
 - [ ] Without the config file, `n` explains where to create it and paneward keeps running.
 - [ ] With a broken config file (e.g. `roots = [`), `n` shows why it is invalid and
       where (also in a 30-column sidebar), and paneward keeps running.
-- [ ] `n` lists the projects under every root, sorted by name, without hidden directories.
+- [ ] `n` lists the projects under every root, sorted by name
+      ignoring case, without hidden directories.
 - [ ] Typing filters the list (ignoring case), `Backspace` widens it again, and the
       cursor sits after the query.
 - [ ] Letters such as `q`, `j` and `n` type into the query instead of quitting or moving.

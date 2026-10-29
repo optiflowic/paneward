@@ -11,13 +11,19 @@ pub struct Project {
     pub path: PathBuf,
 }
 
-/// Lists the projects under `roots`, sorted by name.
+/// Lists the projects under `roots`, sorted by name ignoring case.
 ///
 /// A root that is missing or unreadable has no projects. Hidden directories and names
 /// that are not UTF-8 are skipped.
 pub fn list(roots: &[PathBuf]) -> Vec<Project> {
     let mut projects: Vec<Project> = roots.iter().flat_map(|root| list_root(root)).collect();
-    projects.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.path.cmp(&b.path)));
+    projects.sort_by(|a, b| {
+        a.name
+            .to_lowercase()
+            .cmp(&b.name.to_lowercase())
+            .then_with(|| a.name.cmp(&b.name))
+            .then_with(|| a.path.cmp(&b.path))
+    });
     projects
 }
 
@@ -60,6 +66,18 @@ mod tests {
 
         assert_eq!(names(&projects), ["alpha", "mid", "zeta"]);
         assert_eq!(projects[1].path, second.path().join("mid"));
+    }
+
+    #[test]
+    fn sorts_names_ignoring_case() {
+        let root = tempfile::tempdir().unwrap();
+        for name in ["gamma", "Beta", "alpha"] {
+            fs::create_dir(root.path().join(name)).unwrap();
+        }
+
+        let projects = list(&[root.path().to_path_buf()]);
+
+        assert_eq!(names(&projects), ["alpha", "Beta", "gamma"]);
     }
 
     #[test]

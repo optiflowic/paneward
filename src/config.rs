@@ -22,7 +22,7 @@ const DEFAULT_CONFIG_HOME: &str = ".config";
 pub struct Config {
     /// Directories whose subdirectories are the projects, with `~` expanded.
     pub roots: Vec<PathBuf>,
-    /// Agents by name, sorted by name.
+    /// Agents, sorted by name ignoring case.
     pub agents: Vec<Agent>,
 }
 
@@ -87,11 +87,13 @@ fn parse(text: &str, home: Option<&Path>) -> Result<Config> {
         .iter()
         .map(|root| expand_home(root, home))
         .collect();
-    let agents = file
+    // The map is in byte order; the stable sort keeps it for names equal but for case.
+    let mut agents: Vec<Agent> = file
         .agents
         .into_iter()
         .map(|(name, command)| Agent { name, command })
         .collect();
+    agents.sort_by_key(|agent| agent.name.to_lowercase());
     Ok(Config { roots, agents })
 }
 
@@ -168,6 +170,17 @@ mod tests {
                 ],
             }
         );
+    }
+
+    #[test]
+    fn sorts_agents_ignoring_case() {
+        let config = parse_with_home("[agents]\nCodex = \"codex\"\nclaude = \"claude\"").unwrap();
+        let names: Vec<&str> = config
+            .agents
+            .iter()
+            .map(|agent| agent.name.as_str())
+            .collect();
+        assert_eq!(names, ["claude", "Codex"]);
     }
 
     #[test]
