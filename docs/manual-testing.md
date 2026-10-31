@@ -67,6 +67,8 @@ Run with a config file listing at least two roots and one agent (see the README,
 
 - [ ] Sidebar layout fits a narrow (about 30 columns) split.
 - [ ] Dock layout fits a short (about 8 rows) split.
+- [ ] Project names too long for the pane end with `…` in the sidebar, the dock and
+      the project picker; wide (CJK) characters are not split.
 - [ ] Resizing the pane redraws without artifacts.
 - [ ] Without `--layout`, making the pane much wider than tall switches to the dock,
       and back to the sidebar when it is tall again.
