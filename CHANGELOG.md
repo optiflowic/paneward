@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.0](https://github.com/optiflowic/paneward/compare/paneward-v0.1.1...paneward-v0.2.0) (2026-10-31)
+
+
+### Features
+
+* launch an agent session in a new tab ([#28](https://github.com/optiflowic/paneward/issues/28)) ([eb59c11](https://github.com/optiflowic/paneward/commit/eb59c110e094235b487def7535200f6aeaa3cfc5)), closes [#27](https://github.com/optiflowic/paneward/issues/27)
+
+
+### Bug Fixes
+
+* end rows that do not fit with an ellipsis ([#37](https://github.com/optiflowic/paneward/issues/37)) ([fb9c56c](https://github.com/optiflowic/paneward/commit/fb9c56cd12bf4324389fd80a45b390a19691aacc))
+* show why the config file is invalid ([#35](https://github.com/optiflowic/paneward/issues/35)) ([4bc4f62](https://github.com/optiflowic/paneward/commit/4bc4f6272fa94be021a7a6e0adf1db5d569da939))
+* sort names ignoring case ([#36](https://github.com/optiflowic/paneward/issues/36)) ([a1a62d0](https://github.com/optiflowic/paneward/commit/a1a62d0215c5d0c3177939257683cecb823b04cd))
+
 ## [0.1.1](https://github.com/optiflowic/paneward/compare/paneward-v0.1.0...paneward-v0.1.1) (2026-10-25)
 
 
