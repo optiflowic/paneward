@@ -62,14 +62,19 @@ fn config_path_from(xdg_config_home: Option<OsString>, home: Option<OsString>) -
 
 /// Reads the config file. A missing file is `None`, not an error.
 pub fn load(path: &Path) -> Result<Option<Config>> {
+    let home = home();
     let text = match fs::read_to_string(path) {
         Ok(text) => text,
         Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
         Err(err) => {
-            return Err(err).with_context(|| format!("failed to read {}", display_path(path)));
+            return Err(err).with_context(|| {
+                format!(
+                    "failed to read {}",
+                    display_path_from(path, home.as_deref())
+                )
+            });
         }
     };
-    let home = home();
     // The file goes last so that a narrow pane cuts it rather than what is wrong.
     parse(&text, home.as_deref())
         .map_err(|err| anyhow!("{err:#} in {}", display_path_from(path, home.as_deref())))
