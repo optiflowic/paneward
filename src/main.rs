@@ -5,6 +5,7 @@ mod projects;
 mod state;
 mod terminal;
 mod ui;
+mod worktree;
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
