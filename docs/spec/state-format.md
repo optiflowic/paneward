@@ -66,6 +66,10 @@ an empty string like a missing field.
 - Delete the file when the session ends.
 - Never block or fail the agent. If anything goes wrong, exit successfully without writing.
 - Do nothing when the terminal cannot be identified (e.g. not running inside WezTerm).
+- Do not trust the pane variable alone: processes started from a pane inherit it
+  even when they run elsewhere (e.g. an agent's background daemon), and two writers
+  would then share one file. Check that the writer runs in that pane as the backend
+  memo describes, and do nothing when it does not.
 - Write `terminal_instance` whenever the backend memo's value is available.
 
 ## Rules for readers
