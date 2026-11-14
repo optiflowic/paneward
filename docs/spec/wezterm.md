@@ -142,6 +142,9 @@ Not checked yet. This describes the expected setup; fix it once the WSL items in
 - **Terminal instance.** `WSLENV=WEZTERM_PANE/u` forwards only the pane id, so
   `WEZTERM_UNIX_SOCKET` is unknown inside WSL and files are matched by pane alone.
   Forwarding it as well (with `/p` to translate the path) is untested.
+- **Pane check.** `tty_name` from the Windows WezTerm cannot be compared with the
+  pty inside WSL, so writers skip the [pane check](#checking-the-pane-writers)
+  there, and an inherited `WEZTERM_PANE` still goes undetected.
 - **Startup time.** Interop starts a Windows process for every call, which is slower
   than on macOS or Linux. The 2-second timeout (see Quirks) also applies here.
 
