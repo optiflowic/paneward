@@ -1,5 +1,7 @@
 //! Rendering with ratatui. Reads the app state only; never runs commands or touches files.
 
+use std::borrow::Cow;
+
 use clap::ValueEnum;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
@@ -213,11 +215,11 @@ fn sidebar_item(index: usize, listed: &ListedSession, now: u64, width: usize) ->
 
 fn draw_dock(frame: &mut Frame, app: &App, area: Rect, now: u64) {
     let sessions = || app.sessions().iter().map(|listed| &listed.session);
-    let agents: Vec<String> = sessions().map(agent_label).collect();
+    let agents: Vec<Cow<str>> = sessions().map(agent_label).collect();
     let (project_width, agent_width) = dock_name_widths(
         dock_name_room(area),
         widest(sessions().map(|session| session.project.as_str())),
-        widest(agents.iter().map(String::as_str)),
+        widest(agents.iter().map(AsRef::as_ref)),
     );
     let rows = app
         .sessions()
@@ -346,10 +348,10 @@ fn jump_number(index: usize, place: &Place) -> Span<'static> {
 }
 
 /// The agent, marked when the session has no pane to jump to.
-fn agent_label(session: &Session) -> String {
+fn agent_label(session: &Session) -> Cow<'_, str> {
     match session.place {
-        Place::Pane { .. } => session.agent.clone(),
-        Place::Process { .. } => format!("{} {NO_PANE_MARK}", session.agent),
+        Place::Pane { .. } => Cow::Borrowed(&session.agent),
+        Place::Process { .. } => Cow::Owned(format!("{} {NO_PANE_MARK}", session.agent)),
     }
 }
 
