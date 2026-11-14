@@ -29,6 +29,24 @@ unknown.
 Not checked: panes of a separate `wezterm-mux-server` are expected to carry the
 server's socket, which survives GUI restarts, as their panes do.
 
+## Checking the pane (writers)
+
+`WEZTERM_PANE` is inherited by everything started from the pane, including
+processes that keep running elsewhere. Seen with Claude Code: its background daemon
+was started from pane 5 and kept `WEZTERM_PANE=5`, and a session it resumed ran on
+a pty of its own (`ttys018`, the pane's was `ttys006`). Its hooks wrote
+`wezterm-5.json` as well, so pane 5 showed that session's `cwd` and status in turn
+with the real one.
+
+A writer therefore checks that the pane's `tty_name` from [`list`](#list-panes)
+equals its own terminal, and writes nothing when they differ or the pane is not
+listed. Hooks usually run without a controlling terminal (`ps -o tty=` prints `??`
+on macOS, `?` on Linux), so the writer's terminal is that of the first ancestor
+process that has one, as `/dev/<tty>`. Each check costs about 10 ms on macOS.
+
+A side effect: inside tmux the agent runs on tmux's pty, not the pane's, so nothing
+is written there (tmux is not supported yet anyway).
+
 ## Commands
 
 Every command is run as `wezterm cli --no-auto-start <subcommand>` (`wezterm.exe`
@@ -43,12 +61,14 @@ wezterm cli --no-auto-start list --format json
 ```
 
 Prints a JSON array with one object per pane, across all windows, tabs and
-workspaces. paneward reads two fields and ignores the rest:
+workspaces. paneward reads two fields and ignores the rest; writers also read
+`tty_name`:
 
-| Field     | Type   | Use |
-|-----------|--------|-----|
-| `pane_id` | number | Live pane id. Compared with the state file's `pane_id` (a string) as its decimal form. |
-| `tab_id`  | number | Tab that holds the pane, needed to focus panes in another tab. |
+| Field      | Type   | Use |
+|------------|--------|-----|
+| `pane_id`  | number | Live pane id. Compared with the state file's `pane_id` (a string) as its decimal form. |
+| `tab_id`   | number | Tab that holds the pane, needed to focus panes in another tab. |
+| `tty_name` | string | Device of the pane's pty, e.g. `/dev/ttys006`. Writers use it to [check the pane](#checking-the-pane-writers). |
 
 Excerpt:
 
