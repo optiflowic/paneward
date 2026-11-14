@@ -992,6 +992,7 @@ dependencies = [
  "clap",
  "notify",
  "ratatui",
+ "rustix",
  "serde",
  "serde_json",
  "tempfile",
