@@ -1294,7 +1294,7 @@ mod tests {
         assert!(app.picker().is_none());
         let expected = format!(
             "Create {} to launch sessions (see the README).",
-            dir.path().join(CONFIG_FILE).display()
+            config::display_path(&dir.path().join(CONFIG_FILE))
         );
         assert_eq!(app.message(), Some(expected.as_str()));
     }

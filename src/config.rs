@@ -305,7 +305,7 @@ mod tests {
         let path = dir.path().join(CONFIG_FILE_NAME);
         fs::write(&path, "roots = [").unwrap();
         let err = load(&path).unwrap_err();
-        assert!(format!("{err:#}").contains(&path.display().to_string()));
+        assert!(format!("{err:#}").contains(&display_path(&path)));
     }
 
     #[test]
@@ -318,7 +318,7 @@ mod tests {
             message,
             format!(
                 "line 2, column 10: invalid type: integer `1`, expected a string in {}",
-                path.display()
+                display_path(&path)
             )
         );
     }
