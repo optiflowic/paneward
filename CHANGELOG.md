@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.2.0](https://github.com/optiflowic/paneward/compare/paneward-v0.1.1...paneward-v0.2.0) (2026-11-14)
+
+
+### Features
+
+* launch an agent session in a new tab ([#28](https://github.com/optiflowic/paneward/issues/28)) ([eb59c11](https://github.com/optiflowic/paneward/commit/eb59c110e094235b487def7535200f6aeaa3cfc5)), closes [#27](https://github.com/optiflowic/paneward/issues/27)
+* name sessions in git worktrees after their repository ([#47](https://github.com/optiflowic/paneward/issues/47)) ([6e1a885](https://github.com/optiflowic/paneward/commit/6e1a885892a29432eaed77d124f64aae6f3f75df))
+* show sessions that run without a pane ([#45](https://github.com/optiflowic/paneward/issues/45)) ([fb5b6be](https://github.com/optiflowic/paneward/commit/fb5b6bedc52298005326194e8ea817193c4df263))
+
+
+### Bug Fixes
+
+* end rows that do not fit with an ellipsis ([#37](https://github.com/optiflowic/paneward/issues/37)) ([fb9c56c](https://github.com/optiflowic/paneward/commit/fb9c56cd12bf4324389fd80a45b390a19691aacc))
+* show launch messages to the end in a narrow sidebar ([#49](https://github.com/optiflowic/paneward/issues/49)) ([dd863e4](https://github.com/optiflowic/paneward/commit/dd863e4848ce18a5d9b3fb4757e147a4b9b94c28))
+* show why the config file is invalid ([#35](https://github.com/optiflowic/paneward/issues/35)) ([4bc4f62](https://github.com/optiflowic/paneward/commit/4bc4f6272fa94be021a7a6e0adf1db5d569da939))
+* sort names ignoring case ([#36](https://github.com/optiflowic/paneward/issues/36)) ([a1a62d0](https://github.com/optiflowic/paneward/commit/a1a62d0215c5d0c3177939257683cecb823b04cd))
+
 ## [0.1.1](https://github.com/optiflowic/paneward/compare/paneward-v0.1.0...paneward-v0.1.1) (2026-10-25)
 
 
