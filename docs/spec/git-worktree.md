@@ -38,7 +38,7 @@ mount stalls the UI, as reading the state directory would.
 
 Anything else keeps the last part of `cwd`, without failing:
 
-- no `.git` up to the root, or `cwd` that is not absolute
+- no `.git` up to the root, or `cwd` that is not absolute or not an existing directory
 - a `.git` directory (a main worktree, or a plain repository)
 - a `.git` file pointing elsewhere: a submodule (`.git/modules/<name>`), or a
   worktree of a bare repository (`keyturn.git/worktrees/<id>`)

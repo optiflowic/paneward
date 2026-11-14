@@ -30,6 +30,10 @@ pub fn find(dir: &Path) -> Option<Worktree> {
     if !dir.is_absolute() {
         return None;
     }
+    // A removed `cwd` keeps its path's name, even under a worktree that still exists.
+    if !dir.is_dir() {
+        return None;
+    }
     let top = dir
         .ancestors()
         .find(|dir| fs::symlink_metadata(dir.join(DOT_GIT)).is_ok())?;
@@ -176,6 +180,18 @@ mod tests {
 
         assert_eq!(find(&inner), None);
         assert_eq!(find(&top), Some(worktree("keyturn", "wt")));
+    }
+
+    #[test]
+    fn a_removed_dir_under_a_worktree_is_not_looked_up() {
+        let root = tempfile::tempdir().unwrap();
+        let top = root.path().join("wt");
+        fs::create_dir_all(top.join("deleted")).unwrap();
+        let gitdir = root.path().join("keyturn/.git/worktrees/wt");
+        fs::write(top.join(".git"), format!("gitdir: {}", gitdir.display())).unwrap();
+        fs::remove_dir(top.join("deleted")).unwrap();
+
+        assert_eq!(find(&top.join("deleted/src")), None);
     }
 
     #[test]
