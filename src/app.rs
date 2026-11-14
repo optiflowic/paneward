@@ -9,8 +9,9 @@ use anyhow::Result;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::config::{self, Agent, Config};
+use crate::process;
 use crate::projects::{self, Project};
-use crate::state::{self, Session};
+use crate::state::{self, Place, Session};
 use crate::terminal::Terminal;
 
 /// Number keys jump straight to the first sessions on screen.
@@ -210,12 +211,14 @@ impl App {
 
     /// The message to show, the most recent problem first.
     pub fn message(&self) -> Option<&str> {
-        if self.terminal.is_none() {
+        let problem = self
+            .action_error
+            .as_deref()
+            .or(self.refresh_error.as_deref());
+        if problem.is_none() && self.terminal.is_none() {
             return Some(NO_TERMINAL_MESSAGE);
         }
-        self.action_error
-            .as_deref()
-            .or(self.refresh_error.as_deref())
+        problem
     }
 
     /// The open picker, or `None` while the session list is shown.
@@ -231,24 +234,19 @@ impl App {
 
     /// Reloads the state files and the terminal's panes.
     ///
-    /// Without a terminal there is nothing to show: no pane can be confirmed to exist.
-    /// On failure the last known panes and sessions stay on screen with an error message,
-    /// so a passing hiccup does not empty the list.
+    /// Without a terminal only sessions without a pane are shown: no pane can be
+    /// confirmed to exist. On failure the last known panes and sessions stay on screen
+    /// with an error message, so a passing hiccup does not empty the list.
     pub fn refresh(&mut self) {
-        let Some(terminal) = self.terminal.as_deref() else {
-            return;
-        };
-        let terminal_name = terminal.name();
-        let instance = terminal.instance().map(str::to_owned);
-        let panes_result = terminal.live_pane_ids();
-        let sessions_result = self.load_sessions();
         let mut errors = Vec::new();
-        match panes_result {
-            Ok(ids) => self.live_pane_ids = ids,
-            Err(err) => errors.push(format!("Cannot list panes: {err:#}")),
+        if let Some(terminal) = self.terminal.as_deref() {
+            match terminal.live_pane_ids() {
+                Ok(ids) => self.live_pane_ids = ids,
+                Err(err) => errors.push(format!("Cannot list panes: {err:#}")),
+            }
         }
-        match sessions_result {
-            Ok(sessions) => self.show_sessions(sessions, terminal_name, instance.as_deref()),
+        match self.load_sessions() {
+            Ok(sessions) => self.show_sessions(sessions),
             Err(err) => errors.push(format!("Cannot read sessions: {err:#}")),
         }
         self.refresh_error = (!errors.is_empty()).then(|| errors.join(" "));
@@ -261,13 +259,14 @@ impl App {
         }
     }
 
-    fn show_sessions(
-        &mut self,
-        sessions: Vec<Session>,
-        terminal_name: &str,
-        instance: Option<&str>,
-    ) {
-        let live = sessions_in_live_panes(sessions, terminal_name, instance, &self.live_pane_ids);
+    fn show_sessions(&mut self, sessions: Vec<Session>) {
+        let terminal = self.terminal.as_deref();
+        let panes = terminal.map(|terminal| LivePanes {
+            terminal: terminal.name(),
+            instance: terminal.instance(),
+            ids: &self.live_pane_ids,
+        });
+        let live = live_sessions(sessions, panes.as_ref(), process::is_running);
         let listed = with_status_since(&self.sessions, live);
         self.selected = reselect(&self.sessions, self.selected, &listed);
         self.sessions = listed;
@@ -316,10 +315,17 @@ impl App {
             return;
         };
         self.selected = index;
+        let Place::Pane { pane_id, .. } = &listed.session.place else {
+            self.action_error = Some(format!(
+                "Cannot jump to {}: it runs without a pane.",
+                listed.session.project
+            ));
+            return;
+        };
         let Some(terminal) = self.terminal.as_deref() else {
             return;
         };
-        if let Err(err) = terminal.focus_pane(&listed.session.pane_id) {
+        if let Err(err) = terminal.focus_pane(pane_id) {
             self.action_error = Some(format!(
                 "Cannot jump to {}: {err:#}",
                 listed.session.project
@@ -461,21 +467,37 @@ fn jump_number_index(digit: char) -> Option<usize> {
     (1..=MAX_JUMP_NUMBER).contains(&number).then(|| number - 1)
 }
 
-/// Keeps the sessions whose pane exists in this run of this terminal. A state file
-/// can outlive its pane, panes of other terminals cannot be checked, and after a
-/// terminal restart a new pane can reuse the id of an old one.
-fn sessions_in_live_panes(
+/// The panes of the terminal paneward runs in, as last listed.
+struct LivePanes<'a> {
+    terminal: &'a str,
+    instance: Option<&'a str>,
+    ids: &'a HashSet<String>,
+}
+
+/// Keeps the sessions that are still there. A state file can outlive its session.
+///
+/// A session in a pane is kept when its pane exists in this run of this terminal:
+/// panes of other terminals cannot be checked, and after a terminal restart a new
+/// pane can reuse the id of an old one. A session without a pane is kept while its
+/// process runs.
+fn live_sessions(
     sessions: Vec<Session>,
-    terminal_name: &str,
-    instance: Option<&str>,
-    live_pane_ids: &HashSet<String>,
+    panes: Option<&LivePanes>,
+    is_running: impl Fn(u32) -> bool,
 ) -> Vec<Session> {
     sessions
         .into_iter()
-        .filter(|session| {
-            session.terminal == terminal_name
-                && is_same_run(session.terminal_instance.as_deref(), instance)
-                && live_pane_ids.contains(&session.pane_id)
+        .filter(|session| match &session.place {
+            Place::Pane {
+                terminal,
+                pane_id,
+                terminal_instance,
+            } => panes.is_some_and(|panes| {
+                *terminal == panes.terminal
+                    && is_same_run(terminal_instance.as_deref(), panes.instance)
+                    && panes.ids.contains(pane_id)
+            }),
+            Place::Process { pid } => is_running(*pid),
         })
         .collect()
 }
@@ -496,7 +518,8 @@ fn with_status_since(previous: &[ListedSession], sessions: Vec<Session>) -> Vec<
         .into_iter()
         .map(|session| {
             let unchanged = previous.iter().find(|listed| {
-                is_same_pane(&listed.session, &session) && listed.session.status == session.status
+                is_same_place(&listed.session.place, &session.place)
+                    && listed.session.status == session.status
             });
             let status_since = unchanged.map_or(session.updated_at, |listed| listed.status_since);
             ListedSession {
@@ -507,19 +530,36 @@ fn with_status_since(previous: &[ListedSession], sessions: Vec<Session>) -> Vec<
         .collect()
 }
 
-/// Keeps the selection on the same pane across reloads. If that session is gone,
-/// keeps the position, clamped to the new list.
+/// Keeps the selection on the same pane or process across reloads. If that session
+/// is gone, keeps the position, clamped to the new list.
 fn reselect(previous: &[ListedSession], selected: usize, current: &[ListedSession]) -> usize {
-    let same_pane = previous.get(selected).and_then(|selected| {
+    let same_place = previous.get(selected).and_then(|selected| {
         current
             .iter()
-            .position(|listed| is_same_pane(&listed.session, &selected.session))
+            .position(|listed| is_same_place(&listed.session.place, &selected.session.place))
     });
-    same_pane.unwrap_or_else(|| selected.min(current.len().saturating_sub(1)))
+    same_place.unwrap_or_else(|| selected.min(current.len().saturating_sub(1)))
 }
 
-fn is_same_pane(a: &Session, b: &Session) -> bool {
-    a.terminal == b.terminal && a.pane_id == b.pane_id
+/// Whether two places are the same pane or process. The terminal instance is left
+/// out: a pane keeps its identity when a writer starts or stops recording it.
+fn is_same_place(a: &Place, b: &Place) -> bool {
+    match (a, b) {
+        (
+            Place::Pane {
+                terminal: a_terminal,
+                pane_id: a_pane,
+                ..
+            },
+            Place::Pane {
+                terminal: b_terminal,
+                pane_id: b_pane,
+                ..
+            },
+        ) => a_terminal == b_terminal && a_pane == b_pane,
+        (Place::Process { pid: a }, Place::Process { pid: b }) => a == b,
+        _ => false,
+    }
 }
 
 #[cfg(test)]
@@ -539,12 +579,50 @@ mod tests {
         Session {
             agent: "claude".into(),
             status,
-            terminal: "wezterm".into(),
-            pane_id: pane_id.into(),
-            terminal_instance: None,
+            place: pane(pane_id),
             project: format!("project-{pane_id}"),
             updated_at,
         }
+    }
+
+    fn pane(pane_id: &str) -> Place {
+        Place::Pane {
+            terminal: "wezterm".into(),
+            pane_id: pane_id.into(),
+            terminal_instance: None,
+        }
+    }
+
+    fn pane_less(pid: u32) -> Session {
+        Session {
+            place: Place::Process { pid },
+            ..session("-", Status::Idle, 1)
+        }
+    }
+
+    /// The pane id of each session, or `pid <pid>` for sessions without a pane.
+    fn places(sessions: &[Session]) -> Vec<String> {
+        sessions
+            .iter()
+            .map(|session| place_name(&session.place))
+            .collect()
+    }
+
+    fn place_name(place: &Place) -> String {
+        match place {
+            Place::Pane { pane_id, .. } => pane_id.clone(),
+            Place::Process { pid } => format!("pid {pid}"),
+        }
+    }
+
+    fn with_instance(mut session: Session, instance: &str) -> Session {
+        if let Place::Pane {
+            terminal_instance, ..
+        } = &mut session.place
+        {
+            *terminal_instance = Some(instance.into());
+        }
+        session
     }
 
     fn listed(pane_id: &str, status: Status, status_since: u64) -> ListedSession {
@@ -635,37 +713,72 @@ mod tests {
 
     #[test]
     fn keeps_only_sessions_in_live_panes_of_this_terminal() {
-        let mut tmux = session("3", Status::Idle, 1);
-        tmux.terminal = "tmux".into();
+        let tmux = Session {
+            place: Place::Pane {
+                terminal: "tmux".into(),
+                pane_id: "3".into(),
+                terminal_instance: None,
+            },
+            ..session("3", Status::Idle, 1)
+        };
         let sessions = vec![
             session("1", Status::Idle, 1),
             session("2", Status::Idle, 1),
             tmux,
         ];
+        let live_ids = ids(&["1", "3"]);
+        let panes = LivePanes {
+            terminal: "wezterm",
+            instance: None,
+            ids: &live_ids,
+        };
 
-        let kept = sessions_in_live_panes(sessions, "wezterm", None, &ids(&["1", "3"]));
+        let kept = live_sessions(sessions, Some(&panes), |_| true);
 
-        let panes: Vec<&str> = kept.iter().map(|s| s.pane_id.as_str()).collect();
-        assert_eq!(panes, ["1"]);
+        assert_eq!(places(&kept), ["1"]);
     }
 
     #[test]
     fn hides_sessions_from_an_earlier_run_of_the_terminal() {
-        let mut old_run = session("1", Status::Idle, 1);
-        old_run.terminal_instance = Some("gui-sock-old-run".into());
-        let mut this_run = session("2", Status::Idle, 1);
-        this_run.terminal_instance = Some("gui-sock-this-run".into());
-        let sessions = vec![old_run, this_run];
+        let sessions = vec![
+            with_instance(session("1", Status::Idle, 1), "gui-sock-old-run"),
+            with_instance(session("2", Status::Idle, 1), "gui-sock-this-run"),
+        ];
+        let live_ids = ids(&["1", "2"]);
+        let panes = LivePanes {
+            terminal: "wezterm",
+            instance: Some("gui-sock-this-run"),
+            ids: &live_ids,
+        };
 
-        let kept = sessions_in_live_panes(
-            sessions,
-            "wezterm",
-            Some("gui-sock-this-run"),
-            &ids(&["1", "2"]),
-        );
+        let kept = live_sessions(sessions, Some(&panes), |_| true);
 
-        let panes: Vec<&str> = kept.iter().map(|s| s.pane_id.as_str()).collect();
-        assert_eq!(panes, ["2"]);
+        assert_eq!(places(&kept), ["2"]);
+    }
+
+    #[test]
+    fn keeps_sessions_without_a_pane_while_their_process_runs() {
+        let sessions = vec![pane_less(10), pane_less(20)];
+        let kept = live_sessions(sessions, None, |pid| pid == 20);
+        assert_eq!(places(&kept), ["pid 20"]);
+    }
+
+    #[test]
+    fn hides_every_session_in_a_pane_without_a_terminal() {
+        let sessions = vec![session("1", Status::Idle, 1), pane_less(10)];
+        let kept = live_sessions(sessions, None, |_| true);
+        assert_eq!(places(&kept), ["pid 10"]);
+    }
+
+    #[test]
+    fn a_pane_and_a_process_are_never_the_same_place() {
+        assert!(is_same_place(&pane("1"), &pane("1")));
+        assert!(!is_same_place(&pane("1"), &pane("2")));
+        assert!(is_same_place(
+            &Place::Process { pid: 1 },
+            &Place::Process { pid: 1 }
+        ));
+        assert!(!is_same_place(&pane("1"), &Place::Process { pid: 1 }));
     }
 
     #[test]
@@ -830,10 +943,20 @@ mod tests {
         .unwrap();
     }
 
-    fn shown_panes(app: &App) -> Vec<&str> {
+    /// Writes a session without a pane whose process is this test process, so it runs.
+    fn write_pane_less_state(dir: &TempDir) {
+        let pid = std::process::id();
+        let text = serde_json::json!({
+            "version": 1, "agent": "claude", "status": "idle", "pid": pid,
+            "cwd": "/src/background", "updated_at": 100,
+        });
+        fs::write(dir.path().join(format!("pid-{pid}.json")), text.to_string()).unwrap();
+    }
+
+    fn shown_panes(app: &App) -> Vec<String> {
         app.sessions()
             .iter()
-            .map(|listed| listed.session.pane_id.as_str())
+            .map(|listed| place_name(&listed.session.place))
             .collect()
     }
 
@@ -889,8 +1012,57 @@ mod tests {
 
         app.refresh();
 
-        assert_eq!(shown_panes(&app), Vec::<&str>::new());
+        assert_eq!(shown_panes(&app), Vec::<String>::new());
         assert_eq!(app.message(), Some(NO_TERMINAL_MESSAGE));
+    }
+
+    #[test]
+    fn without_a_terminal_sessions_without_a_pane_are_still_shown() {
+        let dir = tempfile::tempdir().unwrap();
+        write_state(&dir, "1", "idle");
+        write_pane_less_state(&dir);
+        let mut app = App::new(Some(dir.path().to_path_buf()), None, None);
+
+        app.refresh();
+
+        assert_eq!(shown_panes(&app), [format!("pid {}", std::process::id())]);
+    }
+
+    #[test]
+    fn without_a_terminal_a_failed_jump_is_explained_over_the_missing_terminal() {
+        let dir = tempfile::tempdir().unwrap();
+        write_pane_less_state(&dir);
+        let mut app = App::new(Some(dir.path().to_path_buf()), None, None);
+        app.refresh();
+
+        app.handle_key(key(KeyCode::Enter));
+        assert_eq!(
+            app.message(),
+            Some("Cannot jump to background: it runs without a pane.")
+        );
+
+        app.handle_key(key(KeyCode::Down));
+        assert_eq!(app.message(), Some(NO_TERMINAL_MESSAGE));
+    }
+
+    #[test]
+    fn jumping_to_a_session_without_a_pane_explains_why_it_cannot() {
+        let Fixture {
+            mut app,
+            dir,
+            focused,
+            ..
+        } = fixture(&["1"], &["1"]);
+        write_pane_less_state(&dir);
+        app.refresh();
+
+        app.handle_key(key(KeyCode::Char('2')));
+
+        assert_eq!(*focused.borrow(), Vec::<String>::new());
+        assert_eq!(
+            app.message(),
+            Some("Cannot jump to background: it runs without a pane.")
+        );
     }
 
     #[test]

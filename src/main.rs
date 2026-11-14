@@ -1,5 +1,6 @@
 mod app;
 mod config;
+mod process;
 mod projects;
 mod state;
 mod terminal;

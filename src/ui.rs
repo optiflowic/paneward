@@ -1,5 +1,7 @@
 //! Rendering with ratatui. Reads the app state only; never runs commands or touches files.
 
+use std::borrow::Cow;
+
 use clap::ValueEnum;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
@@ -10,7 +12,7 @@ use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 use crate::app::{App, ListedSession, MAX_JUMP_NUMBER, PickerView};
-use crate::state::Status;
+use crate::state::{Place, Session, Status};
 
 /// `auto` uses the dock when the area is wider than this many times its height.
 /// Terminal cells are about twice as tall as wide, so 2 means "wider than square".
@@ -28,6 +30,8 @@ const QUERY_PROMPT: &str = " > ";
 const HIGHLIGHT_SYMBOL: &str = "▶ ";
 /// Ends text cut to fit, so that it does not look complete.
 const ELLIPSIS: &str = "…";
+/// Follows the agent of a session without a pane, which cannot be jumped to.
+const NO_PANE_MARK: &str = "(bg)";
 
 const DOCK_COLUMN_SPACING: u16 = 2;
 /// Width of the jump number and status icon, `1 ●`.
@@ -193,7 +197,7 @@ fn list_item_width(area: Rect) -> usize {
 fn sidebar_item(index: usize, listed: &ListedSession, now: u64, width: usize) -> ListItem<'_> {
     let session = &listed.session;
     let title = Line::from(vec![
-        jump_number(index),
+        jump_number(index, &session.place),
         Span::raw(" "),
         status_icon(session.status),
         Span::raw(" "),
@@ -201,7 +205,7 @@ fn sidebar_item(index: usize, listed: &ListedSession, now: u64, width: usize) ->
     ]);
     let details = Line::from(format!(
         "    {}  {}  {}",
-        session.agent,
+        agent_label(session),
         status_label(session.status),
         format_elapsed(now.saturating_sub(listed.status_since)),
     ))
@@ -211,10 +215,11 @@ fn sidebar_item(index: usize, listed: &ListedSession, now: u64, width: usize) ->
 
 fn draw_dock(frame: &mut Frame, app: &App, area: Rect, now: u64) {
     let sessions = || app.sessions().iter().map(|listed| &listed.session);
+    let agents: Vec<Cow<str>> = sessions().map(agent_label).collect();
     let (project_width, agent_width) = dock_name_widths(
         dock_name_room(area),
         widest(sessions().map(|session| session.project.as_str())),
-        widest(sessions().map(|session| session.agent.as_str())),
+        widest(agents.iter().map(AsRef::as_ref)),
     );
     let rows = app
         .sessions()
@@ -273,7 +278,7 @@ fn dock_row(
     let session = &listed.session;
     Row::new(vec![
         Line::from(vec![
-            jump_number(index),
+            jump_number(index, &session.place),
             Span::raw(" "),
             status_icon(session.status),
         ]),
@@ -283,7 +288,7 @@ fn dock_row(
             usize::from(project_width),
         ),
         fit_line(
-            Line::from(session.agent.as_str()).dim(),
+            Line::from(agent_label(session)).dim(),
             usize::from(agent_width),
         ),
         Line::from(format_elapsed(now.saturating_sub(listed.status_since))).dim(),
@@ -330,15 +335,24 @@ fn take_width(text: &str, room: &mut usize) -> (String, bool) {
     (kept, false)
 }
 
-/// The number key that jumps to this row, blank past the last number key.
-fn jump_number(index: usize) -> Span<'static> {
+/// The number key that jumps to this row, blank past the last number key and for
+/// sessions without a pane.
+fn jump_number(index: usize, place: &Place) -> Span<'static> {
     let number = index + 1;
-    let text = if number <= MAX_JUMP_NUMBER {
+    let text = if number <= MAX_JUMP_NUMBER && matches!(place, Place::Pane { .. }) {
         number.to_string()
     } else {
         " ".to_string()
     };
     Span::raw(text).dim()
+}
+
+/// The agent, marked when the session has no pane to jump to.
+fn agent_label(session: &Session) -> Cow<'_, str> {
+    match session.place {
+        Place::Pane { .. } => Cow::Borrowed(&session.agent),
+        Place::Process { .. } => Cow::Owned(format!("{} {NO_PANE_MARK}", session.agent)),
+    }
 }
 
 fn status_icon(status: Status) -> Span<'static> {
@@ -482,10 +496,31 @@ mod tests {
         assert_eq!(widest(std::iter::empty()), 0);
     }
 
+    fn pane() -> Place {
+        Place::Pane {
+            terminal: "wezterm".into(),
+            pane_id: "1".into(),
+            terminal_instance: None,
+        }
+    }
+
     #[test]
     fn rows_past_nine_have_no_jump_number() {
-        assert_eq!(jump_number(0).content, "1");
-        assert_eq!(jump_number(8).content, "9");
-        assert_eq!(jump_number(9).content, " ");
+        assert_eq!(jump_number(0, &pane()).content, "1");
+        assert_eq!(jump_number(8, &pane()).content, "9");
+        assert_eq!(jump_number(9, &pane()).content, " ");
+    }
+
+    #[test]
+    fn sessions_without_a_pane_have_no_jump_number_and_are_marked() {
+        let session = Session {
+            agent: "claude".into(),
+            status: Status::Idle,
+            place: Place::Process { pid: 42 },
+            project: "paneward".into(),
+            updated_at: 1,
+        };
+        assert_eq!(jump_number(0, &session.place).content, " ");
+        assert_eq!(agent_label(&session), "claude (bg)");
     }
 }

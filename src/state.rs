@@ -41,14 +41,25 @@ pub enum Status {
 pub struct Session {
     pub agent: String,
     pub status: Status,
-    pub terminal: String,
-    pub pane_id: String,
-    /// Which run of the terminal the pane belongs to, if the writer recorded it.
-    pub terminal_instance: Option<String>,
-    /// Last component of the session's working directory, or `pane <id>` without one.
+    pub place: Place,
+    /// Last component of the session's working directory, or `pane <id>` / `pid <pid>`
+    /// without one.
     pub project: String,
     /// Unix seconds of the last write.
     pub updated_at: u64,
+}
+
+/// Where a session runs.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Place {
+    Pane {
+        terminal: String,
+        pane_id: String,
+        /// Which run of the terminal the pane belongs to, if the writer recorded it.
+        terminal_instance: Option<String>,
+    },
+    /// Away from any pane, alive as long as this process.
+    Process { pid: u32 },
 }
 
 /// A state file as written on disk. Unknown fields are ignored by serde's default.
@@ -57,9 +68,10 @@ struct StateFile {
     version: u64,
     agent: String,
     status: Status,
-    terminal: String,
-    pane_id: String,
+    terminal: Option<String>,
+    pane_id: Option<String>,
     terminal_instance: Option<String>,
+    pid: Option<u32>,
     cwd: Option<String>,
     updated_at: u64,
 }
@@ -121,38 +133,64 @@ fn parse_session(text: &str) -> Option<Session> {
     if file.version != SUPPORTED_VERSION {
         return None;
     }
-    let project = project_name(file.cwd.as_deref(), &file.pane_id);
+    let place = place(
+        file.terminal,
+        file.pane_id,
+        file.terminal_instance,
+        file.pid,
+    )?;
+    let project = project_name(file.cwd.as_deref(), &place);
     Some(Session {
         agent: file.agent,
         status: file.status,
-        terminal: file.terminal,
-        pane_id: file.pane_id,
-        // An empty value says nothing about the instance (the spec treats it as missing).
-        terminal_instance: file
-            .terminal_instance
-            .filter(|instance| !instance.is_empty()),
+        place,
         project,
         updated_at: file.updated_at,
     })
 }
 
-fn project_name(cwd: Option<&str>, pane_id: &str) -> String {
+/// A pane when the file names one, else the process of a session without a pane.
+fn place(
+    terminal: Option<String>,
+    pane_id: Option<String>,
+    terminal_instance: Option<String>,
+    pid: Option<u32>,
+) -> Option<Place> {
+    if let (Some(terminal), Some(pane_id)) = (terminal, pane_id) {
+        return Some(Place::Pane {
+            terminal,
+            pane_id,
+            // An empty value says nothing about the instance (the spec treats it as missing).
+            terminal_instance: terminal_instance.filter(|instance| !instance.is_empty()),
+        });
+    }
+    pid.map(|pid| Place::Process { pid })
+}
+
+fn project_name(cwd: Option<&str>, place: &Place) -> String {
     cwd.and_then(|cwd| Path::new(cwd).file_name()).map_or_else(
-        || format!("pane {pane_id}"),
+        || match place {
+            Place::Pane { pane_id, .. } => format!("pane {pane_id}"),
+            Place::Process { pid } => format!("pid {pid}"),
+        },
         |name| name.to_string_lossy().into_owned(),
     )
 }
 
-/// Orders sessions by status (`waiting`, `running`, `idle`), then by project name
-/// ignoring case, then as written so that `Foo` and `foo` keep a fixed order. The pane id breaks ties so the order does not jump between reloads. It is
-/// compared as a string: any fixed order will do, and ids are not always numbers.
+/// Orders sessions in panes before those without one, each by status (`waiting`,
+/// `running`, `idle`), then by project name ignoring case, then as written so that
+/// `Foo` and `foo` keep a fixed order. The place breaks ties so the order does not
+/// jump between reloads. Pane ids are compared as strings: any fixed order will do,
+/// and ids are not always numbers.
 fn sort_for_display(sessions: &mut [Session]) {
+    let has_pane = |session: &Session| matches!(session.place, Place::Pane { .. });
     sessions.sort_by(|a, b| {
-        a.status
-            .cmp(&b.status)
+        has_pane(b)
+            .cmp(&has_pane(a))
+            .then_with(|| a.status.cmp(&b.status))
             .then_with(|| a.project.to_lowercase().cmp(&b.project.to_lowercase()))
             .then_with(|| a.project.cmp(&b.project))
-            .then_with(|| a.pane_id.cmp(&b.pane_id))
+            .then_with(|| a.place.cmp(&b.place))
     });
 }
 
@@ -186,6 +224,34 @@ mod tests {
         .to_string()
     }
 
+    fn pane_less_json(status: &str, pid: u32, cwd: &str) -> String {
+        serde_json::json!({
+            "version": 1,
+            "agent": "claude",
+            "status": status,
+            "pid": pid,
+            "cwd": cwd,
+            "updated_at": 100,
+        })
+        .to_string()
+    }
+
+    fn pane_id(session: &Session) -> &str {
+        match &session.place {
+            Place::Pane { pane_id, .. } => pane_id,
+            Place::Process { .. } => "-",
+        }
+    }
+
+    fn terminal_instance(session: &Session) -> Option<&str> {
+        match &session.place {
+            Place::Pane {
+                terminal_instance, ..
+            } => terminal_instance.as_deref(),
+            Place::Process { .. } => None,
+        }
+    }
+
     #[test]
     fn parses_a_valid_file() {
         let session = parse_session(VALID).unwrap();
@@ -194,9 +260,13 @@ mod tests {
             Session {
                 agent: "claude".into(),
                 status: Status::Running,
-                terminal: "wezterm".into(),
-                pane_id: "12".into(),
-                terminal_instance: Some("/home/me/.local/share/wezterm/gui-sock-example".into()),
+                place: Place::Pane {
+                    terminal: "wezterm".into(),
+                    pane_id: "12".into(),
+                    terminal_instance: Some(
+                        "/home/me/.local/share/wezterm/gui-sock-example".into()
+                    ),
+                },
                 project: "project".into(),
                 updated_at: 1_700_000_060,
             }
@@ -221,14 +291,14 @@ mod tests {
                        "pane_id":"%3","updated_at":5}"#;
         let session = parse_session(text).unwrap();
         assert_eq!(session.agent, "codex");
-        assert_eq!(session.terminal_instance, None);
+        assert_eq!(terminal_instance(&session), None);
         assert_eq!(session.project, "pane %3");
     }
 
     #[test]
     fn treats_an_empty_terminal_instance_as_unknown() {
         let text = VALID.replace("/home/me/.local/share/wezterm/gui-sock-example", "");
-        assert_eq!(parse_session(&text).unwrap().terminal_instance, None);
+        assert_eq!(terminal_instance(&parse_session(&text).unwrap()), None);
     }
 
     #[test]
@@ -255,6 +325,39 @@ mod tests {
     }
 
     #[test]
+    fn parses_a_session_without_a_pane() {
+        let session = parse_session(&pane_less_json("idle", 4242, "/src/project")).unwrap();
+        assert_eq!(session.place, Place::Process { pid: 4242 });
+        assert_eq!(session.project, "project");
+    }
+
+    #[test]
+    fn a_pane_wins_over_a_pid() {
+        let text = VALID.replacen('{', r#"{"pid": 4242,"#, 1);
+        assert!(matches!(
+            parse_session(&text).unwrap().place,
+            Place::Pane { .. }
+        ));
+    }
+
+    #[test]
+    fn a_terminal_without_a_pane_id_counts_as_no_pane() {
+        let text = VALID
+            .replace(r#""pane_id": "12","#, "")
+            .replacen('{', r#"{"pid": 4242,"#, 1);
+        assert_eq!(
+            parse_session(&text).unwrap().place,
+            Place::Process { pid: 4242 }
+        );
+    }
+
+    #[test]
+    fn skips_a_pid_that_is_not_a_number() {
+        let text = pane_less_json("idle", 4242, "/p").replace("4242", r#""4242""#);
+        assert_eq!(parse_session(&text), None);
+    }
+
+    #[test]
     fn skips_a_pane_id_that_is_not_a_string() {
         let text = VALID.replace(r#""pane_id": "12""#, r#""pane_id": 12"#);
         assert_eq!(parse_session(&text), None);
@@ -267,15 +370,22 @@ mod tests {
     }
 
     #[test]
-    fn project_name_falls_back_to_the_pane_when_cwd_has_no_name() {
-        assert_eq!(project_name(Some("/"), "7"), "pane 7");
-        assert_eq!(project_name(Some(""), "7"), "pane 7");
-        assert_eq!(project_name(None, "7"), "pane 7");
+    fn project_name_falls_back_to_the_place_when_cwd_has_no_name() {
+        let pane = Place::Pane {
+            terminal: "wezterm".into(),
+            pane_id: "7".into(),
+            terminal_instance: None,
+        };
+        assert_eq!(project_name(Some("/"), &pane), "pane 7");
+        assert_eq!(project_name(Some(""), &pane), "pane 7");
+        assert_eq!(project_name(None, &pane), "pane 7");
+        assert_eq!(project_name(None, &Place::Process { pid: 42 }), "pid 42");
     }
 
     #[test]
     fn project_name_ignores_a_trailing_slash() {
-        assert_eq!(project_name(Some("/src/paneward/"), "7"), "paneward");
+        let place = Place::Process { pid: 42 };
+        assert_eq!(project_name(Some("/src/paneward/"), &place), "paneward");
     }
 
     #[test]
@@ -322,7 +432,7 @@ mod tests {
 
         let sessions = load_sessions(dir.path()).unwrap();
 
-        let panes: Vec<&str> = sessions.iter().map(|s| s.pane_id.as_str()).collect();
+        let panes: Vec<&str> = sessions.iter().map(pane_id).collect();
         assert_eq!(panes, ["1"]);
     }
 
@@ -360,7 +470,7 @@ mod tests {
 
         let order: Vec<(Status, &str, &str)> = sessions
             .iter()
-            .map(|s| (s.status, s.project.as_str(), s.pane_id.as_str()))
+            .map(|s| (s.status, s.project.as_str(), pane_id(s)))
             .collect();
         assert_eq!(
             order,
@@ -370,6 +480,31 @@ mod tests {
                 (Status::Running, "beta", "5"),
                 (Status::Running, "zeta", "2"),
                 (Status::Idle, "alpha", "1"),
+            ]
+        );
+    }
+
+    #[test]
+    fn sorts_sessions_without_a_pane_after_those_in_panes() {
+        let dir = tempfile::tempdir().unwrap();
+        let write = |name: &str, text: String| fs::write(dir.path().join(name), text).unwrap();
+        write("pid-20.json", pane_less_json("waiting", 20, "/src/alpha"));
+        write("pid-10.json", pane_less_json("idle", 10, "/src/alpha"));
+        write("wezterm-1.json", state_json("idle", "1", "/src/zeta"));
+
+        let sessions = load_sessions(dir.path()).unwrap();
+
+        let places: Vec<&Place> = sessions.iter().map(|s| &s.place).collect();
+        assert_eq!(
+            places,
+            [
+                &Place::Pane {
+                    terminal: "wezterm".into(),
+                    pane_id: "1".into(),
+                    terminal_instance: None,
+                },
+                &Place::Process { pid: 20 },
+                &Place::Process { pid: 10 },
             ]
         );
     }

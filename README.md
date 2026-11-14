@@ -39,8 +39,11 @@ through a backend.
   write one against that spec (Claude Code, for example, can run a command on its
   hook events). Have the hook write `terminal_instance` (for WezTerm, the value of
   `WEZTERM_UNIX_SOCKET`): without it, an old session left by a crash can show up
-  again after WezTerm restarts and reuses its pane id. paneward only reads these
-  files; it does not install hooks or change agent settings.
+  again after WezTerm restarts and reuses its pane id. For a session that runs
+  outside any pane (e.g. in an agent's background daemon), have the hook write a
+  [file without a pane](docs/spec/state-format.md#sessions-without-a-pane) instead.
+  paneward only reads these files; it does not install hooks or change agent
+  settings.
 - Rust 1.99 or later, only to build from source.
 
 ### Install
@@ -118,8 +121,8 @@ paneward [--layout auto|sidebar|dock]
 ### What the list shows
 
 Each session shows its number (1-9, for the number keys), status, project (the last
-part of its working directory, or `pane <id>` without one), agent, and how long it
-has had its current status. For sessions that existed before paneward started, that
+part of its working directory, or `pane <id>` / `pid <pid>` without one), agent,
+and how long it has had its current status. For sessions that existed before paneward started, that
 time counts from their state file's last update.
 
 | Icon | Status    | Meaning |
@@ -129,14 +132,17 @@ time counts from their state file's last update.
 | `○`  | `idle`    | The agent finished its turn. |
 
 Sessions needing you come first: `waiting`, then `running`, then `idle`, each by
-project name (ignoring case). The list updates as soon as a state file changes,
+project name (ignoring case). Sessions that run without a pane (e.g. in an agent's
+background daemon) follow in the same order, marked `(bg)` after the agent. They
+have no number and cannot be jumped to, and are shown while their process runs. The list updates as soon as a state file changes,
 or within a few seconds when paneward cannot watch the state directory (e.g. it
 does not exist yet). Sessions whose pane is gone (closed pane, terminal restart) are hidden within
 a few seconds, the next time paneward lists the panes. If listing the panes fails,
 paneward shows the error and keeps using the last pane list it got: state file
 changes still show up, but panes opened or closed since then are not noticed.
 Without `WEZTERM_PANE` (outside WezTerm, or in WSL without the `WSLENV` forwarding)
-the list stays empty, because paneward cannot check which panes exist.
+only sessions without a pane are shown, because paneward cannot check which panes
+exist.
 
 ### Launch
 

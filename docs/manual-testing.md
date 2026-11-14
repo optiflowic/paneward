@@ -29,6 +29,11 @@ support as not tested. Once it passes, remove that note from the README and the
       ignoring case.
 - [ ] Ending the session (agent exits normally) removes it from the list.
 - [ ] Closing the pane without ending the session hides it from the list.
+- [ ] A session that runs without a pane (Claude Code: start one from its session
+      list, `←` on an empty prompt) is listed after the sessions in panes, marked
+      `(bg)`, without a number, and its status changes are reflected.
+- [ ] Ending that session removes it; killing its process hides it within a few
+      seconds.
 - [ ] After restarting the terminal, sessions from the previous run are not shown,
       even once a new pane gets the same id as an old one (needs a hook that writes
       `terminal_instance`; leave a state file behind by force-quitting WezTerm).
@@ -39,6 +44,7 @@ support as not tested. Once it passes, remove that note from the README and the
 - [ ] Selecting a session in another tab switches to that tab and focuses the pane.
 - [ ] Selecting a session whose pane was just closed shows a message instead of crashing.
 - [ ] Number keys `1`-`9` jump to the session with that number.
+- [ ] `Enter` on a session without a pane explains that it cannot be jumped to.
 - [ ] paneward stays open after a jump.
 
 ## Launch
