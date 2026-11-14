@@ -12,6 +12,8 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use serde::Deserialize;
 
+use crate::worktree;
+
 /// The only `version` this reader understands.
 const SUPPORTED_VERSION: u64 = 1;
 
@@ -42,8 +44,8 @@ pub struct Session {
     pub agent: String,
     pub status: Status,
     pub place: Place,
-    /// Last component of the session's working directory, or `pane <id>` / `pid <pid>`
-    /// without one.
+    /// Last component of the session's working directory, `<repository> (<worktree>)`
+    /// in a linked git worktree, or `pane <id>` / `pid <pid>` without one.
     pub project: String,
     /// Unix seconds of the last write.
     pub updated_at: u64,
@@ -168,13 +170,23 @@ fn place(
 }
 
 fn project_name(cwd: Option<&str>, place: &Place) -> String {
-    cwd.and_then(|cwd| Path::new(cwd).file_name()).map_or_else(
-        || match place {
-            Place::Pane { pane_id, .. } => format!("pane {pane_id}"),
-            Place::Process { pid } => format!("pid {pid}"),
-        },
+    let Some(cwd) = cwd.map(Path::new) else {
+        return place_name(place);
+    };
+    if let Some(worktree) = worktree::find(cwd) {
+        return format!("{} ({})", worktree.repository, worktree.name);
+    }
+    cwd.file_name().map_or_else(
+        || place_name(place),
         |name| name.to_string_lossy().into_owned(),
     )
+}
+
+fn place_name(place: &Place) -> String {
+    match place {
+        Place::Pane { pane_id, .. } => format!("pane {pane_id}"),
+        Place::Process { pid } => format!("pid {pid}"),
+    }
 }
 
 /// Orders sessions in panes before those without one, each by status (`waiting`,
@@ -445,6 +457,18 @@ mod tests {
         std::os::unix::fs::symlink(&target, dir.path().join("wezterm-1.json")).unwrap();
 
         assert_eq!(load_sessions(dir.path()).unwrap(), []);
+    }
+
+    #[test]
+    fn project_name_in_a_linked_worktree_names_the_repository() {
+        let root = tempfile::tempdir().unwrap();
+        let top = root.path().join("keyturn-worktrees/97-pre-pr-review");
+        fs::create_dir_all(&top).unwrap();
+        let gitdir = root.path().join("keyturn/.git/worktrees/97-pre-pr-review");
+        fs::write(top.join(".git"), format!("gitdir: {}\n", gitdir.display())).unwrap();
+
+        let session = parse_session(&state_json("idle", "1", top.to_str().unwrap())).unwrap();
+        assert_eq!(session.project, "keyturn (97-pre-pr-review)");
     }
 
     #[test]
