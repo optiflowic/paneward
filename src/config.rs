@@ -17,6 +17,9 @@ const CONFIG_FILE_NAME: &str = "config.toml";
 /// Fallback for `XDG_CONFIG_HOME`, relative to `HOME`.
 const DEFAULT_CONFIG_HOME: &str = ".config";
 
+/// How messages write the home directory.
+const HOME_PREFIX: &str = "~";
+
 /// What paneward can launch.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Config {
@@ -59,16 +62,44 @@ fn config_path_from(xdg_config_home: Option<OsString>, home: Option<OsString>) -
 
 /// Reads the config file. A missing file is `None`, not an error.
 pub fn load(path: &Path) -> Result<Option<Config>> {
+    let home = home();
     let text = match fs::read_to_string(path) {
         Ok(text) => text,
         Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
-        Err(err) => return Err(err).with_context(|| format!("failed to read {}", path.display())),
+        Err(err) => {
+            return Err(err).with_context(|| {
+                format!(
+                    "failed to read {}",
+                    display_path_from(path, home.as_deref())
+                )
+            });
+        }
     };
-    let home = env::var_os("HOME").filter(|home| !home.is_empty());
     // The file goes last so that a narrow pane cuts it rather than what is wrong.
-    parse(&text, home.as_deref().map(Path::new))
-        .map_err(|err| anyhow!("{err:#} in {}", path.display()))
+    parse(&text, home.as_deref())
+        .map_err(|err| anyhow!("{err:#} in {}", display_path_from(path, home.as_deref())))
         .map(Some)
+}
+
+/// `path` for messages, with the home directory written `~` to fit narrow panes.
+pub fn display_path(path: &Path) -> String {
+    display_path_from(path, home().as_deref())
+}
+
+fn display_path_from(path: &Path, home: Option<&Path>) -> String {
+    let Some(rest) = home.and_then(|home| path.strip_prefix(home).ok()) else {
+        return path.display().to_string();
+    };
+    if rest.as_os_str().is_empty() {
+        return HOME_PREFIX.to_string();
+    }
+    format!("{HOME_PREFIX}/{}", rest.display())
+}
+
+fn home() -> Option<PathBuf> {
+    env::var_os("HOME")
+        .filter(|home| !home.is_empty())
+        .map(PathBuf::from)
 }
 
 fn parse(text: &str, home: Option<&Path>) -> Result<Config> {
@@ -140,6 +171,23 @@ mod tests {
 
     fn parse_with_home(text: &str) -> Result<Config> {
         parse(text, Some(Path::new(HOME)))
+    }
+
+    #[test]
+    fn display_path_writes_the_home_directory_as_a_tilde() {
+        let home = Some(Path::new(HOME));
+        let display = |path: &str| display_path_from(Path::new(path), home);
+        assert_eq!(
+            display("/home/me/.config/paneward/config.toml"),
+            "~/.config/paneward/config.toml"
+        );
+        assert_eq!(display("/home/me"), "~");
+        assert_eq!(display("/home/meow/config.toml"), "/home/meow/config.toml");
+        assert_eq!(display("/etc/config.toml"), "/etc/config.toml");
+        assert_eq!(
+            display_path_from(Path::new("/home/me/config.toml"), None),
+            "/home/me/config.toml"
+        );
     }
 
     #[test]
@@ -257,7 +305,7 @@ mod tests {
         let path = dir.path().join(CONFIG_FILE_NAME);
         fs::write(&path, "roots = [").unwrap();
         let err = load(&path).unwrap_err();
-        assert!(format!("{err:#}").contains(&path.display().to_string()));
+        assert!(format!("{err:#}").contains(&display_path(&path)));
     }
 
     #[test]
@@ -270,7 +318,7 @@ mod tests {
             message,
             format!(
                 "line 2, column 10: invalid type: integer `1`, expected a string in {}",
-                path.display()
+                display_path(&path)
             )
         );
     }

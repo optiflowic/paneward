@@ -366,11 +366,11 @@ impl App {
         let Some(config) = config else {
             return Err(format!(
                 "Create {} to launch sessions (see the README).",
-                path.display()
+                config::display_path(path)
             ));
         };
         if config.agents.is_empty() {
-            return Err(format!("No agents in {}.", path.display()));
+            return Err(format!("No agents in {}.", config::display_path(path)));
         }
         Ok(config)
     }
@@ -1294,7 +1294,7 @@ mod tests {
         assert!(app.picker().is_none());
         let expected = format!(
             "Create {} to launch sessions (see the README).",
-            dir.path().join(CONFIG_FILE).display()
+            config::display_path(&dir.path().join(CONFIG_FILE))
         );
         assert_eq!(app.message(), Some(expected.as_str()));
     }

@@ -18,8 +18,9 @@ use crate::state::{Place, Session, Status};
 /// Terminal cells are about twice as tall as wide, so 2 means "wider than square".
 const DOCK_ASPECT_RATIO: u32 = 2;
 
-/// Messages wrap over at most this many lines, so the list keeps most of the room.
-const MAX_MESSAGE_LINES: u16 = 3;
+/// A message takes at most 1/this of the rows, so the list keeps the rest.
+/// Config errors have no length limit, so no fixed number of lines fits them all.
+const MESSAGE_ROWS_DIVISOR: u16 = 2;
 
 const TITLE: &str = " paneward ";
 const SIDEBAR_HINTS: &str = " ⏎ jump  n new  q quit ";
@@ -78,12 +79,10 @@ pub fn draw(frame: &mut Frame, app: &App, layout: LayoutChoice, now: u64) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    let (list_area, message_area) = split_for_message(inner, app.message());
-    if let (Some(message), Some(message_area)) = (app.message(), message_area) {
-        let text = Paragraph::new(message)
-            .style(Style::new().fg(Color::Yellow))
-            .wrap(Wrap { trim: true });
-        frame.render_widget(text, message_area);
+    let message = app.message().map(message_paragraph);
+    let (list_area, message_area) = split_for_message(inner, message.as_ref());
+    if let (Some(message), Some(message_area)) = (message, message_area) {
+        frame.render_widget(message, message_area);
     }
 
     if let Some(picker) = picker {
@@ -117,27 +116,28 @@ fn auto_shape(area: Rect) -> Shape {
 }
 
 /// Splits off the bottom lines for the message, if there is one.
-fn split_for_message(area: Rect, message: Option<&str>) -> (Rect, Option<Rect>) {
+fn split_for_message(area: Rect, message: Option<&Paragraph>) -> (Rect, Option<Rect>) {
     let Some(message) = message else {
         return (area, None);
     };
-    let height = message_height(message, area.width);
+    let height = message_height(message, area);
     let [list, message] =
         Layout::vertical([Constraint::Min(0), Constraint::Length(height)]).areas(area);
     (list, Some(message))
 }
 
-/// Estimates the rows a message needs. Word wrapping can need a little more; the
-/// last words are cut off then, which is fine for a status line.
-fn message_height(message: &str, width: u16) -> u16 {
-    let width = usize::from(width.max(1));
-    let lines: usize = message
-        .lines()
-        .map(|line| Line::from(line).width().div_ceil(width).max(1))
-        .sum();
-    u16::try_from(lines)
-        .unwrap_or(MAX_MESSAGE_LINES)
-        .clamp(1, MAX_MESSAGE_LINES)
+fn message_paragraph(message: &str) -> Paragraph<'_> {
+    Paragraph::new(message)
+        .style(Style::new().fg(Color::Yellow))
+        .wrap(Wrap { trim: true })
+}
+
+/// The rows a message wraps over in `area`, up to its share of the rows.
+fn message_height(message: &Paragraph, area: Rect) -> u16 {
+    let limit = (area.height / MESSAGE_ROWS_DIVISOR).max(1);
+    u16::try_from(message.line_count(area.width))
+        .unwrap_or(limit)
+        .clamp(1, limit)
 }
 
 /// The query line, with the cursor after the query, over the matching names.
@@ -476,17 +476,38 @@ mod tests {
     }
 
     #[test]
-    fn message_height_wraps_up_to_a_limit() {
-        assert_eq!(message_height("short", 28), 1);
-        assert_eq!(message_height(&"x".repeat(29), 28), 2);
-        assert_eq!(message_height(&"x".repeat(500), 28), MAX_MESSAGE_LINES);
-        assert_eq!(message_height("x", 0), 1);
+    fn message_height_wraps_up_to_half_the_rows() {
+        let height = |message: &str, width, rows| {
+            message_height(&message_paragraph(message), Rect::new(0, 0, width, rows))
+        };
+        assert_eq!(height("short", 28, 40), 1);
+        assert_eq!(height(&"x".repeat(29), 28, 40), 2);
+        assert_eq!(height(&"x".repeat(1000), 28, 40), 20);
+        assert_eq!(height(&"x".repeat(1000), 28, 1), 1);
+        assert_eq!(height("x", 0, 40), 1);
     }
 
     #[test]
     fn message_height_counts_each_line_of_a_multi_line_message() {
-        assert_eq!(message_height("first\nsecond", 28), 2);
-        assert_eq!(message_height(&format!("{}\nshort", "x".repeat(29)), 28), 3);
+        let height =
+            |message: &str| message_height(&message_paragraph(message), Rect::new(0, 0, 28, 40));
+        assert_eq!(height("first\nsecond"), 2);
+        assert_eq!(height(&format!("{}\nshort", "x".repeat(29))), 3);
+    }
+
+    #[test]
+    fn message_height_fits_config_errors_in_a_narrow_sidebar() {
+        let messages = [
+            "Cannot launch: line 1, column 10: unclosed array, expected `]` in \
+             ~/.config/paneward/config.toml",
+            "Cannot launch: line 2, column 10: invalid type: integer `1`, expected a string in \
+             ~/.config/paneward/config.toml",
+        ];
+        for message in messages {
+            let paragraph = message_paragraph(message);
+            let height = message_height(&paragraph, Rect::new(0, 0, 28, 20));
+            assert_eq!(usize::from(height), paragraph.line_count(28), "{message}");
+        }
     }
 
     #[test]

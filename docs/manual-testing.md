@@ -57,7 +57,9 @@ Run with a config file listing at least two roots and one agent (see the README,
 
 - [ ] Without the config file, `n` explains where to create it and paneward keeps running.
 - [ ] With a broken config file (e.g. `roots = [`), `n` shows why it is invalid and
-      where (also in a 30-column sidebar), and paneward keeps running.
+      where, and paneward keeps running.
+- [ ] In a 30-column sidebar, both messages are shown to the end, with the config
+      file's path written from `~`.
 - [ ] `n` lists the projects under every root, sorted by name
       ignoring case, without hidden directories.
 - [ ] Typing filters the list (ignoring case), `Backspace` widens it again, and the
