@@ -211,12 +211,14 @@ impl App {
 
     /// The message to show, the most recent problem first.
     pub fn message(&self) -> Option<&str> {
-        if self.terminal.is_none() {
+        let problem = self
+            .action_error
+            .as_deref()
+            .or(self.refresh_error.as_deref());
+        if problem.is_none() && self.terminal.is_none() {
             return Some(NO_TERMINAL_MESSAGE);
         }
-        self.action_error
-            .as_deref()
-            .or(self.refresh_error.as_deref())
+        problem
     }
 
     /// The open picker, or `None` while the session list is shown.
@@ -1024,6 +1026,23 @@ mod tests {
         app.refresh();
 
         assert_eq!(shown_panes(&app), [format!("pid {}", std::process::id())]);
+    }
+
+    #[test]
+    fn without_a_terminal_a_failed_jump_is_explained_over_the_missing_terminal() {
+        let dir = tempfile::tempdir().unwrap();
+        write_pane_less_state(&dir);
+        let mut app = App::new(Some(dir.path().to_path_buf()), None, None);
+        app.refresh();
+
+        app.handle_key(key(KeyCode::Enter));
+        assert_eq!(
+            app.message(),
+            Some("Cannot jump to background: it runs without a pane.")
+        );
+
+        app.handle_key(key(KeyCode::Down));
+        assert_eq!(app.message(), Some(NO_TERMINAL_MESSAGE));
     }
 
     #[test]
