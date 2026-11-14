@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use serde::Deserialize;
 
-use crate::worktree;
+use crate::worktree::{self, Worktree};
 
 /// The only `version` this reader understands.
 const SUPPORTED_VERSION: u64 = 1;
@@ -126,22 +126,29 @@ fn is_state_file(path: &Path) -> bool {
 fn read_session(path: &Path) -> Option<Session> {
     // The file may vanish between listing and reading when its session ends.
     let text = fs::read_to_string(path).ok()?;
-    parse_session(&text)
+    let file = parse_state_file(&text)?;
+    let worktree = file
+        .cwd
+        .as_deref()
+        .and_then(|cwd| worktree::find(Path::new(cwd)));
+    session_from(file, worktree.as_ref())
 }
 
 /// Parses one state file. Returns `None` for anything this reader does not understand.
-fn parse_session(text: &str) -> Option<Session> {
+fn parse_state_file(text: &str) -> Option<StateFile> {
     let file: StateFile = serde_json::from_str(text).ok()?;
-    if file.version != SUPPORTED_VERSION {
-        return None;
-    }
+    (file.version == SUPPORTED_VERSION).then_some(file)
+}
+
+/// The session of a parsed state file, given the linked worktree its `cwd` is in.
+fn session_from(file: StateFile, worktree: Option<&Worktree>) -> Option<Session> {
     let place = place(
         file.terminal,
         file.pane_id,
         file.terminal_instance,
         file.pid,
     )?;
-    let project = project_name(file.cwd.as_deref(), &place);
+    let project = project_name(file.cwd.as_deref(), worktree, &place);
     Some(Session {
         agent: file.agent,
         status: file.status,
@@ -169,13 +176,13 @@ fn place(
     pid.map(|pid| Place::Process { pid })
 }
 
-fn project_name(cwd: Option<&str>, place: &Place) -> String {
+fn project_name(cwd: Option<&str>, worktree: Option<&Worktree>, place: &Place) -> String {
+    if let Some(worktree) = worktree {
+        return format!("{} ({})", worktree.repository, worktree.name);
+    }
     let Some(cwd) = cwd.map(Path::new) else {
         return place_name(place);
     };
-    if let Some(worktree) = worktree::find(cwd) {
-        return format!("{} ({})", worktree.repository, worktree.name);
-    }
     cwd.file_name().map_or_else(
         || place_name(place),
         |name| name.to_string_lossy().into_owned(),
@@ -222,6 +229,10 @@ mod tests {
         "started_at": 1700000000,
         "updated_at": 1700000060
     }"#;
+
+    fn parse_session(text: &str) -> Option<Session> {
+        session_from(parse_state_file(text)?, None)
+    }
 
     fn state_json(status: &str, pane_id: &str, cwd: &str) -> String {
         serde_json::json!({
@@ -388,16 +399,22 @@ mod tests {
             pane_id: "7".into(),
             terminal_instance: None,
         };
-        assert_eq!(project_name(Some("/"), &pane), "pane 7");
-        assert_eq!(project_name(Some(""), &pane), "pane 7");
-        assert_eq!(project_name(None, &pane), "pane 7");
-        assert_eq!(project_name(None, &Place::Process { pid: 42 }), "pid 42");
+        assert_eq!(project_name(Some("/"), None, &pane), "pane 7");
+        assert_eq!(project_name(Some(""), None, &pane), "pane 7");
+        assert_eq!(project_name(None, None, &pane), "pane 7");
+        assert_eq!(
+            project_name(None, None, &Place::Process { pid: 42 }),
+            "pid 42"
+        );
     }
 
     #[test]
     fn project_name_ignores_a_trailing_slash() {
         let place = Place::Process { pid: 42 };
-        assert_eq!(project_name(Some("/src/paneward/"), &place), "paneward");
+        assert_eq!(
+            project_name(Some("/src/paneward/"), None, &place),
+            "paneward"
+        );
     }
 
     #[test]
@@ -466,9 +483,13 @@ mod tests {
         fs::create_dir_all(&top).unwrap();
         let gitdir = root.path().join("keyturn/.git/worktrees/97-pre-pr-review");
         fs::write(top.join(".git"), format!("gitdir: {}\n", gitdir.display())).unwrap();
+        let states = root.path().join("states");
+        fs::create_dir(&states).unwrap();
+        let state = state_json("idle", "1", top.to_str().unwrap());
+        fs::write(states.join("wezterm-1.json"), state).unwrap();
 
-        let session = parse_session(&state_json("idle", "1", top.to_str().unwrap())).unwrap();
-        assert_eq!(session.project, "keyturn (97-pre-pr-review)");
+        let sessions = load_sessions(&states).unwrap();
+        assert_eq!(sessions[0].project, "keyturn (97-pre-pr-review)");
     }
 
     #[test]
