@@ -40,7 +40,8 @@ with the real one.
 
 A writer therefore checks that the pane's `tty_name` from [`list`](#list-panes)
 equals its own terminal, and writes nothing when they differ or the pane is not
-listed. Hooks usually run without a controlling terminal (`ps -o tty=` prints `??`
+listed. `list` can hang (see Quirks), so the writer gives up after 2 seconds, as
+paneward does, and writes nothing then either. Hooks usually run without a controlling terminal (`ps -o tty=` prints `??`
 on macOS, `?` on Linux), so the writer's terminal is that of the first ancestor
 process that has one, as `/dev/<tty>`. Each check costs about 10 ms on macOS.
 
