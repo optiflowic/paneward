@@ -39,10 +39,12 @@ a pty of its own (`ttys018`, the pane's was `ttys006`). Its hooks wrote
 with the real one.
 
 A writer therefore checks that the pane's `tty_name` from [`list`](#list-panes)
-equals its own terminal, and writes nothing when they differ or the pane is not
-listed. `list` can hang (see Quirks), so the writer gives up after 2 seconds, as
-paneward does, and writes nothing then either. Hooks usually run without a controlling terminal (`ps -o tty=` prints `??`
-on macOS, `?` on Linux), so the writer's terminal is that of the first ancestor
+equals its own terminal. When they differ or the pane is not listed, it neither
+writes nor deletes the file. `list` can hang (see Quirks), so the writer gives up
+after 2 seconds, as paneward does, and leaves the file alone then too.
+
+Hooks usually run without a controlling terminal (`ps -o tty=` prints `??` on
+macOS, `?` on Linux), so the writer's terminal is that of the first ancestor
 process that has one, as `/dev/<tty>`. Each check costs about 10 ms on macOS.
 
 A side effect: inside tmux the agent runs on tmux's pty, not the pane's, so nothing
