@@ -366,11 +366,11 @@ impl App {
         let Some(config) = config else {
             return Err(format!(
                 "Create {} to launch sessions (see the README).",
-                path.display()
+                config::display_path(path)
             ));
         };
         if config.agents.is_empty() {
-            return Err(format!("No agents in {}.", path.display()));
+            return Err(format!("No agents in {}.", config::display_path(path)));
         }
         Ok(config)
     }
