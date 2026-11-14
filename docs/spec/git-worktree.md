@@ -25,11 +25,16 @@ gitdir: /src/optiflowic/keyturn/.git/worktrees/97-pre-pr-review
 1. From the session's `cwd`, walk up to the first directory that has `.git`
    (like git does), up to the root.
 2. Read `.git` only if it is a regular file, and take its first line after `gitdir:`.
+   A symlink to a regular file is followed. Anything named `.git`, even a broken
+   symlink, ends the walk of step 1.
 3. Resolve a relative path from the directory found in step 1, dropping `..`
    on the path alone (symlinks are not followed).
 4. Accept it only if the path ends in `.git/worktrees/<id>`. The project is then
    `<repository> (<worktree>)`, with `<worktree>` the name of the directory found
    in step 1 (what the user sees on disk), not `<id>`.
+
+The lookup runs again on every refresh, uncached: a `cwd` on a hung network
+mount stalls the UI, as reading the state directory would.
 
 Anything else keeps the last part of `cwd`, without failing:
 
