@@ -121,7 +121,8 @@ paneward [--layout auto|sidebar|dock]
 ### What the list shows
 
 Each session shows its number (1-9, for the number keys), status, project (the last
-part of its working directory, or `pane <id>` / `pid <pid>` without one), agent,
+part of its working directory, `<repository> (<worktree>)` in a linked git worktree,
+or `pane <id>` / `pid <pid>` without one), agent,
 and how long it has had its current status. For sessions that existed before paneward started, that
 time counts from their state file's last update.
 

@@ -27,6 +27,9 @@ support as not tested. Once it passes, remove that note from the README and the
       instead of restarting at each tool call.
 - [ ] Sessions are ordered `waiting`, `running`, `idle`, then by project name
       ignoring case.
+- [ ] An agent started in a linked git worktree (`git worktree add`, also below its
+      top, e.g. in `src/`) is listed as `<repository> (<worktree>)`; one in the main
+      worktree or outside git keeps the directory's name.
 - [ ] Ending the session (agent exits normally) removes it from the list.
 - [ ] Closing the pane without ending the session hides it from the list.
 - [ ] A session that runs without a pane (Claude Code: start one from its session

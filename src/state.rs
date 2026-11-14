@@ -12,6 +12,8 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use serde::Deserialize;
 
+use crate::worktree::{self, Worktree};
+
 /// The only `version` this reader understands.
 const SUPPORTED_VERSION: u64 = 1;
 
@@ -42,8 +44,8 @@ pub struct Session {
     pub agent: String,
     pub status: Status,
     pub place: Place,
-    /// Last component of the session's working directory, or `pane <id>` / `pid <pid>`
-    /// without one.
+    /// Last component of the session's working directory, `<repository> (<worktree>)`
+    /// in a linked git worktree, or `pane <id>` / `pid <pid>` without one.
     pub project: String,
     /// Unix seconds of the last write.
     pub updated_at: u64,
@@ -124,22 +126,29 @@ fn is_state_file(path: &Path) -> bool {
 fn read_session(path: &Path) -> Option<Session> {
     // The file may vanish between listing and reading when its session ends.
     let text = fs::read_to_string(path).ok()?;
-    parse_session(&text)
+    let file = parse_state_file(&text)?;
+    let worktree = file
+        .cwd
+        .as_deref()
+        .and_then(|cwd| worktree::find(Path::new(cwd)));
+    session_from(file, worktree.as_ref())
 }
 
 /// Parses one state file. Returns `None` for anything this reader does not understand.
-fn parse_session(text: &str) -> Option<Session> {
+fn parse_state_file(text: &str) -> Option<StateFile> {
     let file: StateFile = serde_json::from_str(text).ok()?;
-    if file.version != SUPPORTED_VERSION {
-        return None;
-    }
+    (file.version == SUPPORTED_VERSION).then_some(file)
+}
+
+/// The session of a parsed state file, given the linked worktree its `cwd` is in.
+fn session_from(file: StateFile, worktree: Option<&Worktree>) -> Option<Session> {
     let place = place(
         file.terminal,
         file.pane_id,
         file.terminal_instance,
         file.pid,
     )?;
-    let project = project_name(file.cwd.as_deref(), &place);
+    let project = project_name(file.cwd.as_deref(), worktree, &place);
     Some(Session {
         agent: file.agent,
         status: file.status,
@@ -167,14 +176,24 @@ fn place(
     pid.map(|pid| Place::Process { pid })
 }
 
-fn project_name(cwd: Option<&str>, place: &Place) -> String {
-    cwd.and_then(|cwd| Path::new(cwd).file_name()).map_or_else(
-        || match place {
-            Place::Pane { pane_id, .. } => format!("pane {pane_id}"),
-            Place::Process { pid } => format!("pid {pid}"),
-        },
+fn project_name(cwd: Option<&str>, worktree: Option<&Worktree>, place: &Place) -> String {
+    if let Some(worktree) = worktree {
+        return format!("{} ({})", worktree.repository, worktree.name);
+    }
+    let Some(cwd) = cwd.map(Path::new) else {
+        return place_name(place);
+    };
+    cwd.file_name().map_or_else(
+        || place_name(place),
         |name| name.to_string_lossy().into_owned(),
     )
+}
+
+fn place_name(place: &Place) -> String {
+    match place {
+        Place::Pane { pane_id, .. } => format!("pane {pane_id}"),
+        Place::Process { pid } => format!("pid {pid}"),
+    }
 }
 
 /// Orders sessions in panes before those without one, each by status (`waiting`,
@@ -210,6 +229,10 @@ mod tests {
         "started_at": 1700000000,
         "updated_at": 1700000060
     }"#;
+
+    fn parse_session(text: &str) -> Option<Session> {
+        session_from(parse_state_file(text)?, None)
+    }
 
     fn state_json(status: &str, pane_id: &str, cwd: &str) -> String {
         serde_json::json!({
@@ -376,16 +399,22 @@ mod tests {
             pane_id: "7".into(),
             terminal_instance: None,
         };
-        assert_eq!(project_name(Some("/"), &pane), "pane 7");
-        assert_eq!(project_name(Some(""), &pane), "pane 7");
-        assert_eq!(project_name(None, &pane), "pane 7");
-        assert_eq!(project_name(None, &Place::Process { pid: 42 }), "pid 42");
+        assert_eq!(project_name(Some("/"), None, &pane), "pane 7");
+        assert_eq!(project_name(Some(""), None, &pane), "pane 7");
+        assert_eq!(project_name(None, None, &pane), "pane 7");
+        assert_eq!(
+            project_name(None, None, &Place::Process { pid: 42 }),
+            "pid 42"
+        );
     }
 
     #[test]
     fn project_name_ignores_a_trailing_slash() {
         let place = Place::Process { pid: 42 };
-        assert_eq!(project_name(Some("/src/paneward/"), &place), "paneward");
+        assert_eq!(
+            project_name(Some("/src/paneward/"), None, &place),
+            "paneward"
+        );
     }
 
     #[test]
@@ -445,6 +474,22 @@ mod tests {
         std::os::unix::fs::symlink(&target, dir.path().join("wezterm-1.json")).unwrap();
 
         assert_eq!(load_sessions(dir.path()).unwrap(), []);
+    }
+
+    #[test]
+    fn project_name_in_a_linked_worktree_names_the_repository() {
+        let root = tempfile::tempdir().unwrap();
+        let top = root.path().join("keyturn-worktrees/97-pre-pr-review");
+        fs::create_dir_all(&top).unwrap();
+        let gitdir = root.path().join("keyturn/.git/worktrees/97-pre-pr-review");
+        fs::write(top.join(".git"), format!("gitdir: {}\n", gitdir.display())).unwrap();
+        let states = root.path().join("states");
+        fs::create_dir(&states).unwrap();
+        let state = state_json("idle", "1", top.to_str().unwrap());
+        fs::write(states.join("wezterm-1.json"), state).unwrap();
+
+        let sessions = load_sessions(&states).unwrap();
+        assert_eq!(sessions[0].project, "keyturn (97-pre-pr-review)");
     }
 
     #[test]
