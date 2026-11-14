@@ -19,7 +19,8 @@ use crate::state::{Place, Session, Status};
 const DOCK_ASPECT_RATIO: u32 = 2;
 
 /// Messages wrap over at most this many lines, so the list keeps most of the room.
-const MAX_MESSAGE_LINES: u16 = 3;
+/// 5 fits a config error with the usual path in a 30-column sidebar.
+const MAX_MESSAGE_LINES: u16 = 5;
 
 const TITLE: &str = " paneward ";
 const SIDEBAR_HINTS: &str = " ⏎ jump  n new  q quit ";
@@ -78,12 +79,10 @@ pub fn draw(frame: &mut Frame, app: &App, layout: LayoutChoice, now: u64) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    let (list_area, message_area) = split_for_message(inner, app.message());
-    if let (Some(message), Some(message_area)) = (app.message(), message_area) {
-        let text = Paragraph::new(message)
-            .style(Style::new().fg(Color::Yellow))
-            .wrap(Wrap { trim: true });
-        frame.render_widget(text, message_area);
+    let message = app.message().map(message_paragraph);
+    let (list_area, message_area) = split_for_message(inner, message.as_ref());
+    if let (Some(message), Some(message_area)) = (message, message_area) {
+        frame.render_widget(message, message_area);
     }
 
     if let Some(picker) = picker {
@@ -117,7 +116,7 @@ fn auto_shape(area: Rect) -> Shape {
 }
 
 /// Splits off the bottom lines for the message, if there is one.
-fn split_for_message(area: Rect, message: Option<&str>) -> (Rect, Option<Rect>) {
+fn split_for_message(area: Rect, message: Option<&Paragraph>) -> (Rect, Option<Rect>) {
     let Some(message) = message else {
         return (area, None);
     };
@@ -127,15 +126,15 @@ fn split_for_message(area: Rect, message: Option<&str>) -> (Rect, Option<Rect>) 
     (list, Some(message))
 }
 
-/// Estimates the rows a message needs. Word wrapping can need a little more; the
-/// last words are cut off then, which is fine for a status line.
-fn message_height(message: &str, width: u16) -> u16 {
-    let width = usize::from(width.max(1));
-    let lines: usize = message
-        .lines()
-        .map(|line| Line::from(line).width().div_ceil(width).max(1))
-        .sum();
-    u16::try_from(lines)
+fn message_paragraph(message: &str) -> Paragraph<'_> {
+    Paragraph::new(message)
+        .style(Style::new().fg(Color::Yellow))
+        .wrap(Wrap { trim: true })
+}
+
+/// The rows a message wraps over, up to the limit.
+fn message_height(message: &Paragraph, width: u16) -> u16 {
+    u16::try_from(message.line_count(width))
         .unwrap_or(MAX_MESSAGE_LINES)
         .clamp(1, MAX_MESSAGE_LINES)
 }
@@ -477,16 +476,27 @@ mod tests {
 
     #[test]
     fn message_height_wraps_up_to_a_limit() {
-        assert_eq!(message_height("short", 28), 1);
-        assert_eq!(message_height(&"x".repeat(29), 28), 2);
-        assert_eq!(message_height(&"x".repeat(500), 28), MAX_MESSAGE_LINES);
-        assert_eq!(message_height("x", 0), 1);
+        let height = |message: &str, width| message_height(&message_paragraph(message), width);
+        assert_eq!(height("short", 28), 1);
+        assert_eq!(height(&"x".repeat(29), 28), 2);
+        assert_eq!(height(&"x".repeat(500), 28), MAX_MESSAGE_LINES);
+        assert_eq!(height("x", 0), 1);
     }
 
     #[test]
     fn message_height_counts_each_line_of_a_multi_line_message() {
-        assert_eq!(message_height("first\nsecond", 28), 2);
-        assert_eq!(message_height(&format!("{}\nshort", "x".repeat(29)), 28), 3);
+        let height = |message: &str| message_height(&message_paragraph(message), 28);
+        assert_eq!(height("first\nsecond"), 2);
+        assert_eq!(height(&format!("{}\nshort", "x".repeat(29))), 3);
+    }
+
+    #[test]
+    fn message_height_fits_a_config_error_in_a_narrow_sidebar() {
+        let message = "Cannot launch: line 1, column 10: unclosed array, expected `]` in \
+                       ~/.config/paneward/config.toml";
+        let paragraph = message_paragraph(message);
+        let height = message_height(&paragraph, 28);
+        assert_eq!(usize::from(height), paragraph.line_count(28));
     }
 
     #[test]
