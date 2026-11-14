@@ -104,6 +104,9 @@ These files are new in version 1 without a version bump: readers that require
 - A file with `terminal` and `pane_id` is a session in a pane, even if it also has
   `pid`. A file with only `pid` is a session without a pane. Skip files with neither.
 - Ignore unknown fields (new optional fields are not a version bump).
+- `cwd` may not exist on the reader's machine. Readers may look at it on disk
+  (paneward names sessions in a linked git worktree after the repository, see
+  `git-worktree.md`) but must fall back to the path itself.
 - `updated_at` is the time of the last write, not of the last status change: writers
   may rewrite the file without changing `status` (e.g. on every tool call while
   `running`). A reader that shows how long a session has had its status must track

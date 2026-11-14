@@ -20,7 +20,7 @@ see their status, jump to them, and (later) launch them.
 
 ## Architecture
 
-Dependency direction is strictly one-way: `ui → app → {state, config, projects, process, terminal}`.
+Dependency direction is strictly one-way: `ui → app → {state, config, projects, process, terminal}`; `state → worktree`.
 Lower layers never `use` upper layers.
 
 ```
@@ -35,6 +35,7 @@ src/
   config.rs     -- the user's config file (launch roots and agent commands).
   projects.rs   -- projects to launch in: directories under the configured roots.
   process.rs    -- whether a process runs, for sessions without a pane.
+  worktree.rs   -- linked git worktrees, to name sessions after their repository.
   terminal/     -- terminal backends behind the `Terminal` trait
     mod.rs      -- trait + backend detection
     wezterm.rs  -- `wezterm cli` (list panes, focus a pane, spawn a tab)
@@ -64,6 +65,7 @@ Before implementing against an external contract, write/update a memo in `docs/s
 - `docs/spec/state-format.md` — the state file format shared with agent hooks.
 - One memo per terminal backend when it is added (CLI commands and output used,
   known quirks).
+- `docs/spec/git-worktree.md` — the git worktree layout read for project names.
 
 Implementation must cite the memo, not raw upstream docs. If reality diverges from
 the memo, fix the memo in the same PR.
