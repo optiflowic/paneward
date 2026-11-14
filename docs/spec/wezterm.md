@@ -40,8 +40,14 @@ with the real one.
 
 A writer therefore checks that the pane's `tty_name` from [`list`](#list-panes)
 equals its own terminal. When they differ or the pane is not listed, it neither
-writes nor deletes the file. `list` can hang (see Quirks), so the writer gives up
-after 2 seconds, as paneward does, and leaves the file alone then too.
+writes nor deletes the pane's file: the session runs outside the pane, so it is
+recorded as a [session without a pane](state-format.md#sessions-without-a-pane)
+(`pid-<pid>.json`) instead. `list` can hang (see Quirks), so the writer gives up
+after 2 seconds, as paneward does, and writes nothing then.
+
+Seen with Claude Code 2.1.311: sessions started from its session list run in the
+daemon, each in a REPL process of its own (on its own pty, e.g. `ttys014`) that
+lives as long as the session. That process is the session's `pid`.
 
 Hooks usually run without a controlling terminal (`ps -o tty=` prints `??` on
 macOS, `?` on Linux), so the writer's terminal is that of the first ancestor
