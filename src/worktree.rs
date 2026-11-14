@@ -3,9 +3,12 @@
 //! The layout is described in `docs/spec/git-worktree.md`.
 
 use std::fs;
+use std::io::{BufRead, BufReader, Read};
 use std::path::{Component, Path, PathBuf};
 
 const DOT_GIT: &str = ".git";
+// Room for a `gitdir:` line with a path as long as Linux's PATH_MAX.
+const FIRST_LINE_LIMIT: u64 = 8192;
 const GITDIR_PREFIX: &str = "gitdir:";
 const WORKTREES_DIR: &str = "worktrees";
 
@@ -35,11 +38,21 @@ pub fn find(dir: &Path) -> Option<Worktree> {
     if !fs::metadata(&dot_git).is_ok_and(|metadata| metadata.is_file()) {
         return None;
     }
-    let text = fs::read_to_string(dot_git).ok()?;
+    let text = first_line(&dot_git)?;
     Some(Worktree {
         repository: repository_name(top, &text)?,
         name: top.file_name()?.to_string_lossy().into_owned(),
     })
+}
+
+/// The first line of `path`, read no further than `FIRST_LINE_LIMIT` bytes.
+fn first_line(path: &Path) -> Option<String> {
+    let file = fs::File::open(path).ok()?;
+    let mut line = String::new();
+    BufReader::new(file.take(FIRST_LINE_LIMIT))
+        .read_line(&mut line)
+        .ok()?;
+    Some(line)
 }
 
 /// The repository that a `.git` file at `top` points into, from its `gitdir:` line.
